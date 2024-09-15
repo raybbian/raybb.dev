@@ -1,7 +1,7 @@
 #version 300 es
 precision mediump float;
 
-layout(location = 0) in vec2 aPosition;
+in vec2 aPosition;
 out vec2 vTexCoord;
 
 void main() {

@@ -1,4 +1,4 @@
-import { initShaderProgram, setupTexture } from "./gl";
+import { createTextureAndFramebuffer, initShaderProgram, setupTexture } from "./gl";
 import ConeVertShaderSrc from "@/shaders/cone_vert.glsl";
 import ConeFragShaderSrc from "@/shaders/cone_frag.glsl";
 import EdgeFragShaderSrc from "@/shaders/edge_detection_frag.glsl";
@@ -10,7 +10,7 @@ import { vec2 } from "gl-matrix";
 import { Voronoi } from "./voronoi";
 
 /// Note: we must add 1 to all occurrences of this because the triangle fan needs one more point to close off the loop
-const POINTS_PER_CONE: number = 65;
+const POINTS_PER_CONE: number = 129;
 const CONE_RADIUS: number = 500;
 const BLUR_DIRECTIONS: number = 4;
 
@@ -36,7 +36,7 @@ export class VoronoiRenderer {
 
 	constructor(gl: WebGL2RenderingContext, numPoints: number, resolution: vec2) {
 		this.gl = gl;
-		this.voronoi = new Voronoi(numPoints, resolution);
+		this.voronoi = new Voronoi(numPoints, resolution, [[24, 24, 37], [30, 30, 46], [49, 50, 68]]);
 		this.resolution = resolution;
 
 		const coneProgram = initShaderProgram(gl, ConeVertShaderSrc, ConeFragShaderSrc);
@@ -74,10 +74,19 @@ export class VoronoiRenderer {
 		const indexLocation = gl.getAttribLocation(this.coneProgram, 'aIndex');
 		const indexBuffer = gl.createBuffer();
 		gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(Array.from(Array(this.voronoi.numPoints).keys())), gl.STATIC_DRAW);
+		gl.bufferData(gl.ARRAY_BUFFER, this.voronoi.ids, gl.STATIC_DRAW);
 		gl.enableVertexAttribArray(indexLocation);
 		gl.vertexAttribPointer(indexLocation, 1, gl.FLOAT, false, 0, 0);
 		gl.vertexAttribDivisor(indexLocation, 1);
+
+		// init color instance array
+		const colorLocation = gl.getAttribLocation(this.coneProgram, 'aColor');
+		const colorBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, this.voronoi.colors, gl.STATIC_DRAW);
+		gl.enableVertexAttribArray(colorLocation);
+		gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
+		gl.vertexAttribDivisor(colorLocation, 1);
 
 		// Initialize num points uniform
 		const numPointsUniform = gl.getUniformLocation(this.coneProgram, 'uNumPoints');
@@ -126,57 +135,16 @@ export class VoronoiRenderer {
 		gl.enableVertexAttribArray(fullscreenLocation);
 		gl.vertexAttribPointer(fullscreenLocation, 2, gl.FLOAT, false, 0, 0);
 
-		// NOTE: create the two textures and framebuffers
-		const data = this.createTexturesAndFramebuffers(gl, resolution);
-		this.textures = data[0];
-		this.framebuffers = data[1];
-	}
-
-	createTexturesAndFramebuffers(gl: WebGL2RenderingContext, resolution: vec2) {
+		// NOTE: create the 3 textures and framebuffers
 		const textures = [];
 		const framebuffers = [];
-		for (let i = 0; i < 2; i++) {
-			// initialize empty texture
-			const texture = setupTexture(gl);
-			if (texture == null) throw new Error("Failed to create textures");
-			textures.push(texture);
-			gl.bindTexture(gl.TEXTURE_2D, texture);
-			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, resolution[0], resolution[1], 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-
-			//initialize depth buffer
-			const depthBuffer = gl.createRenderbuffer();
-			gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-			gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, resolution[0], resolution[1]);
-
-			// initialize framebuffer
-			const fbo = gl.createFramebuffer();
-			if (fbo == null) throw new Error("Cannot create framebuffer");
-			framebuffers.push(fbo);
-			gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-			gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+		for (let i = 0; i < 3; i++) {
+			const data = createTextureAndFramebuffer(gl, resolution);
+			textures.push(data[0]);
+			framebuffers.push(data[1]);
 		}
-		return [textures, framebuffers];
-	}
-
-	changeResolution(size: vec2) {
-		this.resolution = size;
-		const gl = this.gl;
-		const curProgram = gl.getParameter(gl.CURRENT_PROGRAM);
-
-		gl.viewport(0, 0, size[0], size[1]);
-
-		[this.coneProgram, this.blurProgram, this.edgeProgram].forEach((program) => {
-			gl.useProgram(program);
-			const resolutionUniform = gl.getUniformLocation(program, 'uResolution');
-			gl.uniform2f(resolutionUniform, size[0], size[1]);
-		});
-
-		const data = this.createTexturesAndFramebuffers(gl, size);
-		this.textures = data[0];
-		this.framebuffers = data[1];
-
-		gl.useProgram(curProgram);
+		this.textures = textures;
+		this.framebuffers = framebuffers;
 	}
 
 	render(time: number) {
@@ -190,21 +158,26 @@ export class VoronoiRenderer {
 
 		let renderCount = 0;
 		gl.useProgram(this.coneProgram);
+		//reset active texture to 0 after last use
+		gl.activeTexture(gl.TEXTURE0);
 		gl.bindVertexArray(this.coneVAO);
-
-		const positionArray = new Float32Array(this.voronoi.numPoints * 2)
-		for (let i = 0; i < this.voronoi.numPoints; i++) {
-			positionArray[2 * i] = this.voronoi.points[i].pos[0];
-			positionArray[2 * i + 1] = this.voronoi.points[i].pos[1];
-		}
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.conePositionBuffer);
-		gl.bufferSubData(gl.ARRAY_BUFFER, 0, positionArray);
+		gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.voronoi.positions);
 
 		// draw into framebuffer 0
+		const useColorLoc = gl.getUniformLocation(this.coneProgram, 'uUseColor');
+		gl.uniform1f(useColorLoc, 0.0); // dont use color for edge detection render
 		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[renderCount % 2]);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, POINTS_PER_CONE + 1, this.voronoi.numPoints);
 		renderCount++;
+
+		// copy into texture 3 for use later (actual colors)
+		gl.uniform1f(useColorLoc, 1.0); // use color for actual render
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[2]);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, POINTS_PER_CONE + 1, this.voronoi.numPoints);
+		// dont add renderCount, this is not using first two textures
 
 		// start post
 		gl.bindVertexArray(this.postVAO);
@@ -233,11 +206,49 @@ export class VoronoiRenderer {
 			renderCount++;
 		}
 
+		// sharpen and merge
 		gl.useProgram(this.sharpenProgram);
+
+		const uTextureLoc = gl.getUniformLocation(this.sharpenProgram, 'uTexture');
+		const uCellColorLoc = gl.getUniformLocation(this.sharpenProgram, 'uCellColors');
+		gl.uniform1i(uTextureLoc, 0);
+		gl.uniform1i(uCellColorLoc, 1);
+
+		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, this.textures[(renderCount + 1) % 2]);
+		// store cell colors in texture 1
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, this.textures[2]);
+
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 		renderCount++;
+	}
+
+	changeResolution(size: vec2) {
+		this.resolution = size;
+		const gl = this.gl;
+		const curProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+
+		gl.viewport(0, 0, size[0], size[1]);
+
+		[this.coneProgram, this.blurProgram, this.edgeProgram].forEach((program) => {
+			gl.useProgram(program);
+			const resolutionUniform = gl.getUniformLocation(program, 'uResolution');
+			gl.uniform2f(resolutionUniform, size[0], size[1]);
+		});
+
+		const textures = [];
+		const framebuffers = [];
+		for (let i = 0; i < 3; i++) {
+			const data = createTextureAndFramebuffer(gl, size);
+			textures.push(data[0]);
+			framebuffers.push(data[1]);
+		}
+		this.textures = textures;
+		this.framebuffers = framebuffers;
+
+		gl.useProgram(curProgram);
 	}
 }
