@@ -1,13 +1,18 @@
-import { initShaderProgram } from "./gl";
-import ConeVertShaderSrc from "@/shaders/cone_vert.glsl"
-import ConeFragShaderSrc from "@/shaders/cone_frag.glsl"
+import { initShaderProgram, setupTexture } from "./gl";
+import ConeVertShaderSrc from "@/shaders/cone_vert.glsl";
+import ConeFragShaderSrc from "@/shaders/cone_frag.glsl";
+import EdgeFragShaderSrc from "@/shaders/edge_detection_frag.glsl";
+import FullscreenVertShaderSrc from "@/shaders/fullscreen_quad_vert.glsl";
+import BlurFragShaderSrc from "@/shaders/blur_frag.glsl";
+import SharpenFragShaderSrc from "@/shaders/sharpen_frag.glsl";
 import { generateCone } from "./shapes";
 import { vec2 } from "gl-matrix";
 import { Voronoi } from "./voronoi";
 
 /// Note: we must add 1 to all occurrences of this because the triangle fan needs one more point to close off the loop
 const POINTS_PER_CONE: number = 65;
-const CONE_RADIUS: number = 1000;
+const CONE_RADIUS: number = 500;
+const BLUR_DIRECTIONS: number = 4;
 
 export class VoronoiRenderer {
 	gl: WebGL2RenderingContext;
@@ -20,12 +25,14 @@ export class VoronoiRenderer {
 	coneVAO: WebGLVertexArrayObject;
 	conePositionBuffer: WebGLBuffer;
 
-	// NOTE: Edge Program
-	edgeProgram: WebGLProgram | null = null;
-	edgeVAO: WebGLVertexArrayObject | null = null;
+	// NOTE: Post processing
+	postVAO: WebGLVertexArrayObject;
+	edgeProgram: WebGLProgram;
+	blurProgram: WebGLProgram;
+	sharpenProgram: WebGLProgram;
 
-	textures: WebGLTexture[] | null[] = [null, null];
-	framebuffers: WebGLFramebuffer[] | null[] = [null, null];
+	textures: WebGLTexture[];
+	framebuffers: WebGLFramebuffer[];
 
 	constructor(gl: WebGL2RenderingContext, numPoints: number, resolution: vec2) {
 		this.gl = gl;
@@ -75,18 +82,99 @@ export class VoronoiRenderer {
 		// Initialize num points uniform
 		const numPointsUniform = gl.getUniformLocation(this.coneProgram, 'uNumPoints');
 		gl.uniform1f(numPointsUniform, this.voronoi.numPoints);
+
+		// NOTE: initialize post programs
+		const postVAO = gl.createVertexArray();
+		if (postVAO == null) throw new Error("Failed to initialize edge vertex array");
+		this.postVAO = postVAO;
+		gl.bindVertexArray(postVAO);
+
+		const fullscreenBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, fullscreenBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]), gl.STATIC_DRAW);
+
+		// edge
+		const edgeProgram = initShaderProgram(gl, FullscreenVertShaderSrc, EdgeFragShaderSrc);
+		if (edgeProgram == null) throw new Error("Failed to initialize edge detection program");
+		this.edgeProgram = edgeProgram;
+
+		gl.useProgram(edgeProgram);
+		gl.enable(gl.DEPTH_TEST);
+		let fullscreenLocation = gl.getAttribLocation(edgeProgram, 'aPosition');
+		gl.enableVertexAttribArray(fullscreenLocation);
+		gl.vertexAttribPointer(fullscreenLocation, 2, gl.FLOAT, false, 0, 0);
+
+		// blur
+		const blurProgram = initShaderProgram(gl, FullscreenVertShaderSrc, BlurFragShaderSrc);
+		if (blurProgram == null) throw new Error("Could not init blur program");
+		this.blurProgram = blurProgram;
+
+		gl.useProgram(blurProgram);
+		fullscreenLocation = gl.getAttribLocation(blurProgram, 'aPosition');
+		gl.enableVertexAttribArray(fullscreenLocation);
+		gl.vertexAttribPointer(fullscreenLocation, 2, gl.FLOAT, false, 0, 0);
+
+		// sharpen
+		const sharpenProgram = initShaderProgram(gl, FullscreenVertShaderSrc, SharpenFragShaderSrc);
+		if (sharpenProgram == null) throw new Error("Could not init sharpen program");
+		this.sharpenProgram = sharpenProgram;
+
+		gl.useProgram(sharpenProgram);
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		fullscreenLocation = gl.getAttribLocation(sharpenProgram, 'aPosition');
+		gl.enableVertexAttribArray(fullscreenLocation);
+		gl.vertexAttribPointer(fullscreenLocation, 2, gl.FLOAT, false, 0, 0);
+
+		// NOTE: create the two textures and framebuffers
+		const data = this.createTexturesAndFramebuffers(gl, resolution);
+		this.textures = data[0];
+		this.framebuffers = data[1];
+	}
+
+	createTexturesAndFramebuffers(gl: WebGL2RenderingContext, resolution: vec2) {
+		const textures = [];
+		const framebuffers = [];
+		for (let i = 0; i < 2; i++) {
+			// initialize empty texture
+			const texture = setupTexture(gl);
+			if (texture == null) throw new Error("Failed to create textures");
+			textures.push(texture);
+			gl.bindTexture(gl.TEXTURE_2D, texture);
+			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, resolution[0], resolution[1], 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+			//initialize depth buffer
+			const depthBuffer = gl.createRenderbuffer();
+			gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+			gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, resolution[0], resolution[1]);
+
+			// initialize framebuffer
+			const fbo = gl.createFramebuffer();
+			if (fbo == null) throw new Error("Cannot create framebuffer");
+			framebuffers.push(fbo);
+			gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+			gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+		}
+		return [textures, framebuffers];
 	}
 
 	changeResolution(size: vec2) {
+		this.resolution = size;
 		const gl = this.gl;
 		const curProgram = gl.getParameter(gl.CURRENT_PROGRAM);
 
 		gl.viewport(0, 0, size[0], size[1]);
-		gl.useProgram(this.coneProgram);
-		const resolutionUniform = gl.getUniformLocation(this.coneProgram, 'uResolution');
-		gl.uniform2f(resolutionUniform, size[0], size[1]);
 
-		// TODO: other programs
+		[this.coneProgram, this.blurProgram, this.edgeProgram].forEach((program) => {
+			gl.useProgram(program);
+			const resolutionUniform = gl.getUniformLocation(program, 'uResolution');
+			gl.uniform2f(resolutionUniform, size[0], size[1]);
+		});
+
+		const data = this.createTexturesAndFramebuffers(gl, size);
+		this.textures = data[0];
+		this.framebuffers = data[1];
 
 		gl.useProgram(curProgram);
 	}
@@ -97,8 +185,10 @@ export class VoronoiRenderer {
 		const deltaTime = time - this.curTime;
 		this.curTime = time;
 
+		// update voronoi points and upload point locations to cone shader
 		this.voronoi.simulate(deltaTime, this.resolution);
 
+		let renderCount = 0;
 		gl.useProgram(this.coneProgram);
 		gl.bindVertexArray(this.coneVAO);
 
@@ -110,7 +200,44 @@ export class VoronoiRenderer {
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.conePositionBuffer);
 		gl.bufferSubData(gl.ARRAY_BUFFER, 0, positionArray);
 
+		// draw into framebuffer 0
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[renderCount % 2]);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, POINTS_PER_CONE + 1, this.voronoi.numPoints);
+		renderCount++;
+
+		// start post
+		gl.bindVertexArray(this.postVAO);
+
+		// edge
+		gl.useProgram(this.edgeProgram);
+		gl.bindTexture(gl.TEXTURE_2D, this.textures[(renderCount + 1) % 2]);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[renderCount % 2]);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+		renderCount++;
+
+		//blur
+		gl.useProgram(this.blurProgram);
+		const blurLineUniform = gl.getUniformLocation(this.blurProgram, 'uBlurLine');
+		for (let i = 0; i < BLUR_DIRECTIONS; i++) {
+			const angle = i / BLUR_DIRECTIONS * Math.PI;
+			const lineX = Math.cos(angle);
+			const lineY = Math.sin(angle);
+
+			gl.uniform2f(blurLineUniform, lineX, lineY);
+			gl.bindTexture(gl.TEXTURE_2D, this.textures[(renderCount + 1) % 2]);
+			gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[renderCount % 2]);
+			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+			renderCount++;
+		}
+
+		gl.useProgram(this.sharpenProgram);
+		gl.bindTexture(gl.TEXTURE_2D, this.textures[(renderCount + 1) % 2]);
+		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+		renderCount++;
 	}
 }

@@ -23,7 +23,7 @@ export function VoronoiBg() {
 			const canvas = canvasRef.current;
 			const gl = canvas?.getContext('webgl2');
 			if (canvas == null || gl == null) return;
-			voronoiRef.current = new VoronoiRenderer(gl, 100, [canvas.clientWidth, canvas.clientHeight]);
+			voronoiRef.current = new VoronoiRenderer(gl, 64, [canvas.clientWidth, canvas.clientHeight]);
 		}
 
 		function render(time: number) {
@@ -40,7 +40,7 @@ export function VoronoiBg() {
 	}, []);
 
 	return (
-		<div className="w-full h-full">
+		<div className="w-full h-full bg-green-500">
 			<canvas ref={canvasRef} className="w-full h-full" />
 		</div>
 	);

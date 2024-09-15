@@ -30,7 +30,7 @@ export class Voronoi {
 		this.ids = new Float32Array(this.points.keys());
 		for (let i = 0; i < numPoints; i++) {
 			const pos: vec2 = [Math.random() * screenSize[0], Math.random() * screenSize[1]];
-			const vel: vec2 = [Math.random() * 50 - 25, Math.random() * 50 - 25];
+			const vel: vec2 = [Math.random() * 30 - 15, Math.random() * 30 - 15];
 			this.points[i] = new Point(pos, vel);
 		}
 		this.positionBuffer = null;
