@@ -1,4 +1,6 @@
-import { vec2 } from "gl-matrix";
+import { vec2, vec3 } from "gl-matrix";
+
+export const MAX_POINTS = 256;
 
 class Point {
 	pos: vec2;
@@ -16,7 +18,7 @@ class Point {
 }
 
 export class Voronoi {
-	numPoints: number;
+	numPoints: number = 0;
 	points: Point[];
 
 	positions: Float32Array;
@@ -25,25 +27,37 @@ export class Voronoi {
 
 	curTime: number = 0;
 
-	constructor(numPoints: number, screenSize: vec2, colors: [number, number, number][]) {
-		this.numPoints = numPoints;
-		this.points = new Array(numPoints);
-		this.positions = new Float32Array(numPoints * 2);
+	constructor(numPoints: number, screenSize: vec2, colors: vec3[], accentColor: vec3) {
+		this.points = new Array(MAX_POINTS);
+		this.positions = new Float32Array(MAX_POINTS * 2);
 		this.ids = new Float32Array(this.points.keys());
-		this.colors = new Float32Array(numPoints * 3);
-		for (let i = 0; i < numPoints; i++) {
+		this.colors = new Float32Array(MAX_POINTS * 3);
+
+		this.initPoints(numPoints, screenSize);
+
+		for (let i = 1; i < MAX_POINTS; i++) {
+			const color = colors[Math.floor(Math.random() * colors.length)];
+			this.colors[3 * i] = color[0] / 256;
+			this.colors[3 * i + 1] = color[1] / 256;
+			this.colors[3 * i + 2] = color[2] / 256;
+		}
+		this.colors[0] = accentColor[0] / 256;
+		this.colors[1] = accentColor[1] / 256;
+		this.colors[2] = accentColor[2] / 256;
+	}
+
+	/// initialize points in array for numPoints + 1 (mouse point will be overwritten on simulate)
+	initPoints(numPoints: number, screenSize: vec2) {
+		this.numPoints = numPoints + 1;
+		for (let i = 0; i <= this.numPoints; i++) {
 			const pos: vec2 = [Math.random() * screenSize[0], Math.random() * screenSize[1]];
 			const vel: vec2 = [Math.random() * 30 - 15, Math.random() * 30 - 15];
 			this.points[i] = new Point(pos, vel);
-			const color = colors[Math.floor(Math.random() * colors.length)];
-			for (let j = 0; j < 3; j++)
-				this.colors[3 * i + j] = color[j] / 256;
 		}
 	}
 
-	simulate(deltaTime: number, screenSize: vec2) {
+	simulate(deltaTime: number, screenSize: vec2, mousePos: vec2) {
 		this.points.forEach((point, i) => {
-			point.simulate(deltaTime);
 			if (point.pos[0] > screenSize[0]) {
 				point.vel[0] = -1 * Math.abs(point.vel[0]);
 			} else if (point.pos[0] < 0) {
@@ -54,8 +68,11 @@ export class Voronoi {
 			} else if (point.pos[1] < 0) {
 				point.vel[1] = Math.abs(point.vel[1]);
 			}
+			point.simulate(deltaTime);
 			this.positions[2 * i] = this.points[i].pos[0];
 			this.positions[2 * i + 1] = this.points[i].pos[1];
 		});
+		this.positions[0] = mousePos[0];
+		this.positions[1] = mousePos[1];
 	}
 }

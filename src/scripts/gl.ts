@@ -53,7 +53,7 @@ export function setupTexture(gl: WebGL2RenderingContext) {
 	return texture;
 }
 
-export function createTextureAndFramebuffer(gl: WebGL2RenderingContext, resolution: vec2) {
+export function createTextureFramebufferBundle(gl: WebGL2RenderingContext, resolution: vec2) {
 	// initialize empty texture
 	const texture = setupTexture(gl);
 	if (texture == null) throw new Error("Failed to create textures");
