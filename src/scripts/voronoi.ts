@@ -58,17 +58,17 @@ export class Voronoi {
 
 	simulate(deltaTime: number, screenSize: vec2, mousePos: vec2) {
 		this.points.forEach((point, i) => {
-			if (point.pos[0] > screenSize[0]) {
-				point.vel[0] = -1 * Math.abs(point.vel[0]);
-			} else if (point.pos[0] < 0) {
-				point.vel[0] = Math.abs(point.vel[0]);
-			}
-			if (point.pos[1] > screenSize[1]) {
-				point.vel[1] = -1 * Math.abs(point.vel[1]);
-			} else if (point.pos[1] < 0) {
-				point.vel[1] = Math.abs(point.vel[1]);
+			for (let i = 0; i < 2; i++) {
+				if (point.pos[i] > screenSize[i]) {
+					point.vel[i] = -1 * Math.abs(point.vel[i]);
+					point.pos[i] = screenSize[i];
+				} else if (point.pos[i] < 0) {
+					point.vel[i] = Math.abs(point.vel[i]);
+					point.pos[i] = 0;
+				}
 			}
 			point.simulate(deltaTime);
+
 			this.positions[2 * i] = this.points[i].pos[0];
 			this.positions[2 * i + 1] = this.points[i].pos[1];
 		});

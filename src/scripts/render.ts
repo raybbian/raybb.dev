@@ -10,7 +10,7 @@ import { vec2 } from "gl-matrix";
 import { MAX_POINTS, Voronoi } from "./voronoi";
 import config from "@/scripts/config"
 
-const CONE_RADIUS: number = 500;
+const CONE_RADIUS: number = 512;
 
 type ConeInfo = {
 	aIndex: GLint,

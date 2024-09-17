@@ -1,15 +1,18 @@
-import { useEffect, useRef } from "react";
+import { MutableRefObject, useEffect, useRef } from "react";
 import { VoronoiRenderer } from "@/scripts/render";
 
 const FPS = 60;
 
-export function Voronoi() {
+export default function Voronoi({ mousePosRef, className }: {
+	mousePosRef: MutableRefObject<[number, number]>,
+	className?: string,
+}) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const voronoiRef = useRef<VoronoiRenderer | null>(null);
-	const mousePosRef = useRef<[number, number]>([0, 0]);
 	const timeRef = useRef<number>(0);
 	const curFrameTimeRef = useRef<number>(0);
 	const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const shouldRenderRef = useRef(true);
 
 	useEffect(() => {
 		function handleResize() {
@@ -21,6 +24,7 @@ export function Voronoi() {
 				const canvas = canvasRef.current;
 				const voronoi = voronoiRef.current;
 				if (canvas == null || voronoi == null) return;
+				if (canvas.clientHeight == 0 || canvas.clientWidth == 0) return;
 				if (canvas.width == canvas.clientWidth && canvas.height == canvas.clientHeight) return;
 				canvas.width = canvas.clientWidth;
 				canvas.height = canvas.clientHeight;
@@ -39,6 +43,7 @@ export function Voronoi() {
 
 		function render(time: number) {
 			if (voronoiRef.current == null) return;
+			if (!shouldRenderRef.current) return;
 
 			time /= 1000;
 			const delta = time - timeRef.current;
@@ -57,17 +62,14 @@ export function Voronoi() {
 		handleResize();
 		render(0);
 
-		return () => window.removeEventListener('resize', handleResize);
-	}, []);
+		return () => {
+			window.removeEventListener('resize', handleResize);
+			shouldRenderRef.current = false;
+		};
+	}, [mousePosRef]);
 
 	return (
-		<div
-			className="w-full h-full bg-black"
-			onMouseMove={(e) => {
-				mousePosRef.current[0] = e.clientX;
-				mousePosRef.current[1] = e.clientY;
-			}}
-		>
+		<div className={`${className} w-full h-full bg-black`}		>
 			<canvas ref={canvasRef} className="w-full h-full opacity-70" />
 		</div>
 	);
