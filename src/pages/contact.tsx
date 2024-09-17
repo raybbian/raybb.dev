@@ -8,8 +8,8 @@ function ContactEntry({ subject, description }: {
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-2xl lg:text-3xl font-semibold text-ctp-lavender"><span className="text-white">About </span>{subject}</p>
-      <p className="text-md lg:text-lg opacity-80">{description}</p>
+      <p className="text-2xl lg:text-3xl font-semibold text-ctp-lavender"><span className="text-ctp-text">About </span>{subject}</p>
+      <p className="text-md lg:text-lg text-ctp-subtext0">{description}</p>
     </div>
   )
 }

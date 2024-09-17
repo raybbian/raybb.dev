@@ -7,8 +7,8 @@ function AboutEntry({ title, description }: {
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-2xl lg:text-3xl font-semibold text-ctp-lavender"><span className="text-white">I am </span>{title}</p>
-      <p className="text-md lg:text-lg opacity-80">{description}</p>
+      <p className="text-2xl lg:text-3xl font-semibold text-ctp-lavender"><span className="text-ctp-text">I am </span>{title}</p>
+      <p className="text-md lg:text-lg text-ctp-subtext0">{description}</p>
     </div>
   )
 }

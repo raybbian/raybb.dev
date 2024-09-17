@@ -63,7 +63,7 @@ function Project({ name, technologies, description, link, img, video }: {
       <p className="text-lg lg:text-xl font-semibold order-2 lg:order-3 mb-1 lg:mb-0">
         {technologies}
       </p>
-      <p className="text-md lg:text-lg opacity-80 order-4 lg:order-4">{description}</p>
+      <p className="text-md lg:text-lg text-ctp-subtext0 order-4 lg:order-4">{description}</p>
     </div>
   )
 }

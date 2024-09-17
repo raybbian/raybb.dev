@@ -29,7 +29,7 @@ export function Page({ children, titleLead, title, textAccent }: {
 				<div className={`flex flex-col lg:flex-row max-w-[28rem] lg:max-w-full gap-8 lg:gap-16 lg:items-center`}>
 					<div>
 						<p className={`text-3xl lg:text-5xl font-bold ${textAccent}`}>{titleLead}</p>
-						<h1 className="text-[3rem] lg:text-[5rem] text-white font-bold leading-none whitespace-nowrap">{title}</h1>
+						<h1 className="text-[3rem] lg:text-[5rem] font-bold leading-none whitespace-nowrap">{title}</h1>
 					</div>
 					<div
 						className={`flex flex-col gap-8 lg:max-h-[80dvh] lg:overflow-scroll relative no-scrollbar`}

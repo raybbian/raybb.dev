@@ -12,8 +12,8 @@ function ExperienceEntry({ company, title, description, from, to }: {
   }
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-2xl lg:text-3xl font-semibold text-ctp-lavender"><span className="text-white">{company} | </span>{title}</p>
-      <p className="text-md lg:text-lg opacity-80">{description}</p>
+      <p className="text-2xl lg:text-3xl font-semibold text-ctp-lavender"><span className="text-ctp-text">{company} | </span>{title}</p>
+      <p className="text-md lg:text-lg text-ctp-subtext0">{description}</p>
       <p className="text-lg lg:text-xl font-semibold">{dateObjFormat(from)} - <span className="text-nlavendar">{dateObjFormat(to)}</span></p>
     </div>
   )
