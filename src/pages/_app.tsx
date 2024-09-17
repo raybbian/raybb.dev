@@ -35,7 +35,7 @@ export default function App({ Component, pageProps }: AppProps) {
         onClick={() => setNavOpen(!navOpen)}
       />
       <div
-        className={`w-full h-full absolute z-10 bg-black ${navOpen ? "opacity-50" : "opacity-0 pointer-events-none"} transition-opacity cursor-pointer`}
+        className={`w-full h-full absolute z-10 bg-black ${navOpen ? "opacity-50" : "opacity-0"} transition-opacity cursor-pointer`}
         onClick={() => setNavOpen(false)}
       />
       <div className={`p-6 py-24 h-full absolute left-full z-20 w-56 max-w-full lg:w-80 bg-ctp-crust border-l-2 border-ctp-surface0 transition-transform ${navOpen && "-translate-x-full"}`} >
@@ -43,7 +43,7 @@ export default function App({ Component, pageProps }: AppProps) {
           {pagesTypes.map((pageName, i) =>
             <Link
               key={i}
-              className={`${pathname == '/' + pageName && "text-ctp-lavender underline"} text-2xl lg:text-4xl text-right`}
+              className={`${pathname == '/' + pageName && "text-ctp-lavender underline"} text-2xl lg:text-4xl text-right font-semibold`}
               href={`/${pageName}`}
               onClick={() => setNavOpen(false)}
             >
