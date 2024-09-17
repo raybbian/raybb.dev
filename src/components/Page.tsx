@@ -26,7 +26,7 @@ export function Page({ children, titleLead, title, textAccent }: {
 	return (
 		<div className="w-full h-full grid place-items-center overflow-scroll lg:overflow-hidden">
 			<div className={`h-full w-full max-w-screen-lg grid place-items-center px-8 py-12`}>
-				<div className={`flex flex-col lg:flex-row max-w-[28rem] lg:max-w-full gap-8 lg:gap-16 lg:items-center select-none`}>
+				<div className={`flex flex-col lg:flex-row max-w-[28rem] lg:max-w-full gap-8 lg:gap-16 lg:items-center`}>
 					<div>
 						<p className={`text-3xl lg:text-5xl font-bold ${textAccent}`}>{titleLead}</p>
 						<h1 className="text-[3rem] lg:text-[5rem] text-white font-bold leading-none whitespace-nowrap">{title}</h1>

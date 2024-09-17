@@ -17,52 +17,53 @@ function Project({ name, technologies, description, link, img, video }: {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   return (
-    <div className="w-full h-full relative flex flex-col lg:block">
-      {video &&
-        <video
-          ref={videoRef}
-          src={`/project-cover/${video}`}
-          preload="auto"
-          loop={true}
-          muted={true}
-          width={256} height={256}
-          className={`w-full ${preview ? "lg:w-[65%] lg:max-w-full" : "lg:hover:w-[30%] lg:w-[29%] lg:max-w-[40%]"} object-cover bg-ctp-crust aspect-video float-left mr-4 mb-3 lg:mb-1 border-2 border-ctp-surface0 cursor-pointer transition-width order-3 lg:order-1`}
-          onClick={() => {
-            if (preview) {
-              videoRef.current?.pause();
-              setPlaying(false);
-            } else {
-              videoRef.current?.play();
-              setPlaying(true);
-            }
-            setPreview(!preview)
-          }}
-        >
-          <source src={`/project-cover/${video}`} type={`video/${video.split('.')[1]}`} />
-        </video>
-      }
-      {video &&
-        <div className="absolute top-2 left-2 pointer-events-none rounded-full bg-ctp-base p-[0.3rem] grid place-items-center">
-          {!playing ? <FaPlay /> : <FaPause />}
-        </div>
-      }
-      {img &&
-        <Image
-          src={`/project-cover/${img}`}
-          alt={`${name}-project-cover`}
-          width={256} height={256}
-          className={`w-full ${preview ? "lg:w-[65%] lg:max-w-full" : "lg:hover:w-[30%] lg:w-[29%] lg:max-w-[40%]"} object-cover bg-ctp-crust aspect-video float-left mr-4 mb-3 lg:mb-1 border-2 border-ctp-surface0 lg:cursor-pointer transition-width`}
-          //only cursor pointer on lg because cannot play image
-          onClick={() => setPreview(!preview)}
-        />
-      }
+    <div className="w-full h-full flex flex-col lg:block">
+      <div className={`w-full ${preview ? "lg:w-[65%] lg:max-w-full" : "lg:hover:w-[30%] lg:w-[29%]"} bg-ctp-crust aspect-video float-left mr-4 mb-3 lg:mb-1 border-2 border-ctp-surface0 cursor-pointer transition-width order-3 lg:order-1 relative z-10`}>
+        {video &&
+          <video
+            ref={videoRef}
+            src={`/project-cover/${video}`}
+            preload="auto"
+            loop={true}
+            muted={true}
+            width={640} height={360}
+            className={`w-full h-full object-cover`}
+            onClick={() => {
+              if (preview) {
+                videoRef.current?.pause();
+                setPlaying(false);
+              } else {
+                videoRef.current?.play();
+                setPlaying(true);
+              }
+              setPreview(!preview)
+            }}
+          >
+            <source src={`/project-cover/${video}`} type={`video/${video.split('.')[1]}`} />
+          </video>
+        }
+        {video &&
+          <div className="absolute top-2 left-2 pointer-events-none rounded-full bg-ctp-base p-[0.3rem] grid place-items-center">
+            {!playing ? <FaPlay /> : <FaPause />}
+          </div>
+        }
+        {img &&
+          <Image
+            src={`/project-cover/${img}`}
+            alt={`${name}-project-cover`}
+            width={640} height={360}
+            className={`w-full h-full object-cover`}
+            onClick={() => setPreview(!preview)}
+          />
+        }
+      </div>
       <p className={`text-2xl lg:text-3xl font-semibold text-ctp-lavender mb-1 order-1 lg:order-2`}>
         {link ? <Link href={link} target="_blank" className="underline underline-offset-4">{name}</Link> : name}
       </p>
-      <p className="text-lg lg:text-xl font-semibold pointer-events-none order-2 lg:order-3 mb-1 lg:mb-0">
+      <p className="text-lg lg:text-xl font-semibold order-2 lg:order-3 mb-1 lg:mb-0">
         {technologies}
       </p>
-      <p className="text-md lg:text-lg opacity-80 pointer-events-none order-4 lg:order-4">{description}</p>
+      <p className="text-md lg:text-lg opacity-80 order-4 lg:order-4">{description}</p>
     </div>
   )
 }
