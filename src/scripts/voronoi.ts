@@ -27,7 +27,7 @@ export class Voronoi {
 
 	curTime: number = 0;
 
-	constructor(numPoints: number, screenSize: vec2, colors: vec3[], accentColor: vec3) {
+	constructor(numPoints: number, screenSize: vec2, colors: vec3[]) {
 		this.points = new Array(MAX_POINTS);
 		this.positions = new Float32Array(MAX_POINTS * 2);
 		this.ids = new Float32Array(this.points.keys());
@@ -35,15 +35,12 @@ export class Voronoi {
 
 		this.initPoints(numPoints, screenSize);
 
-		for (let i = 1; i < MAX_POINTS; i++) {
+		for (let i = 0; i < MAX_POINTS; i++) {
 			const color = colors[Math.floor(Math.random() * colors.length)];
 			this.colors[3 * i] = color[0] / 256;
 			this.colors[3 * i + 1] = color[1] / 256;
 			this.colors[3 * i + 2] = color[2] / 256;
 		}
-		this.colors[0] = accentColor[0] / 256;
-		this.colors[1] = accentColor[1] / 256;
-		this.colors[2] = accentColor[2] / 256;
 	}
 
 	/// initialize points in array for numPoints + 1 (mouse point will be overwritten on simulate)
@@ -51,12 +48,12 @@ export class Voronoi {
 		this.numPoints = numPoints + 1;
 		for (let i = 0; i <= this.numPoints; i++) {
 			const pos: vec2 = [Math.random() * screenSize[0], Math.random() * screenSize[1]];
-			const vel: vec2 = [Math.random() * 30 - 15, Math.random() * 30 - 15];
+			const vel: vec2 = [Math.random() * 10 - 5, Math.random() * 10 - 5];
 			this.points[i] = new Point(pos, vel);
 		}
 	}
 
-	simulate(deltaTime: number, screenSize: vec2, mousePos: vec2) {
+	simulate(deltaTime: number, screenSize: vec2) {
 		this.points.forEach((point, i) => {
 			for (let i = 0; i < 2; i++) {
 				if (point.pos[i] > screenSize[i]) {
@@ -72,7 +69,5 @@ export class Voronoi {
 			this.positions[2 * i] = this.points[i].pos[0];
 			this.positions[2 * i + 1] = this.points[i].pos[1];
 		});
-		this.positions[0] = mousePos[0];
-		this.positions[1] = mousePos[1];
 	}
 }

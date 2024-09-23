@@ -52,21 +52,9 @@ function Nav() {
 }
 
 export default function App({ Component, pageProps }: AppProps) {
-  const mousePosRef = useRef<[number, number]>([0, 0]);
-
   return (
-    <div
-      className={`w-[100dvw] h-[100dvh] ${rubik.className} text-ctp-text overflow-hidden relative selection:bg-ctp-surface0`}
-      onMouseMove={(e) => {
-        mousePosRef.current[0] = e.clientX;
-        mousePosRef.current[1] = e.clientY;
-      }}
-      onMouseEnter={(e) => {
-        mousePosRef.current[0] = e.clientX;
-        mousePosRef.current[1] = e.clientY;
-      }}
-    >
-      <Voronoi mousePosRef={mousePosRef} className="-z-10 absolute" />
+    <div className={`w-[100dvw] h-[100dvh] ${rubik.className} text-ctp-text overflow-hidden relative selection:bg-ctp-surface0`}>
+      <Voronoi className="-z-10 absolute" />
       <Nav />
       <Component {...pageProps} />
     </div>

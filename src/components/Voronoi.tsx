@@ -1,15 +1,15 @@
-import { MutableRefObject, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { VoronoiRenderer } from "@/scripts/render";
 
-const FPS = 60;
+const FPS = 24;
 
-export default function Voronoi({ mousePosRef, className }: {
-	mousePosRef: MutableRefObject<[number, number]>,
+export default function Voronoi({ className }: {
 	className?: string,
 }) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const voronoiRef = useRef<VoronoiRenderer | null>(null);
 	const timeRef = useRef<number>(0);
+	const lastFrameTimeRef = useRef<number>(0);
 	const curFrameTimeRef = useRef<number>(0);
 	const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const shouldRenderRef = useRef(true);
@@ -53,9 +53,9 @@ export default function Voronoi({ mousePosRef, className }: {
 			requestAnimationFrame(render);
 
 			if (curFrameTimeRef.current < 1 / FPS) return;
+			voronoiRef.current.render(timeRef.current - lastFrameTimeRef.current);
 			curFrameTimeRef.current %= (1 / FPS);
-
-			voronoiRef.current.render(delta, mousePosRef.current);
+			lastFrameTimeRef.current = timeRef.current;
 		}
 
 		initVoronoi();
@@ -66,7 +66,7 @@ export default function Voronoi({ mousePosRef, className }: {
 			window.removeEventListener('resize', handleResize);
 			shouldRenderRef.current = false;
 		};
-	}, [mousePosRef]);
+	}, []);
 
 	return (
 		<div className={`${className} w-full h-full bg-black`}		>

@@ -71,7 +71,7 @@ export class VoronoiRenderer {
 
 	constructor(gl: WebGL2RenderingContext, numPoints: number, resolution: vec2) {
 		this.gl = gl;
-		this.voronoi = new Voronoi(numPoints, resolution, config.cellColors, config.accentColor);
+		this.voronoi = new Voronoi(numPoints, resolution, config.cellColors);
 		this.resolution = resolution;
 
 		const coneProgram = initShaderProgram(gl, ConeVertShaderSrc, ConeFragShaderSrc);
@@ -212,11 +212,11 @@ export class VoronoiRenderer {
 		this.framebuffers = framebuffers;
 	}
 
-	render(deltaTime: number, mousePos: vec2) {
+	render(deltaTime: number) {
 		const gl = this.gl;
 
 		// update voronoi points and upload point locations to cone shader
-		this.voronoi.simulate(deltaTime, this.resolution, mousePos);
+		this.voronoi.simulate(deltaTime, this.resolution);
 
 		let renderCount = 0;
 		gl.useProgram(this.coneProgram);

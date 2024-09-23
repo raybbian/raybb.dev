@@ -3,7 +3,6 @@ import { vec3 } from "gl-matrix";
 export type VoronoiConfig = {
 	pixelsPerPoint: number,
 	outlineColor: vec3,
-	accentColor: vec3,
 	cellColors: vec3[],
 	pointsPerCone: number,
 	outlineRadius: number,
@@ -16,9 +15,8 @@ export type VoronoiConfig = {
 const config: VoronoiConfig = {
 	pixelsPerPoint: 15000,
 	outlineColor: [17, 17, 27],
-	accentColor: [49, 50, 68],
 	cellColors: [[24, 24, 37], [27, 27, 42], [30, 30, 46]],
-	pointsPerCone: 101,
+	pointsPerCone: 65,
 	outlineRadius: 1,
 	blurDirections: 4,
 	blurRadius: 6,
