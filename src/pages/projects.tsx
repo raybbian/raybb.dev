@@ -77,6 +77,20 @@ export default function Projects() {
       textAccent="text-ctp-lavender"
     >
       <Project
+        name="Lightborne"
+        description="Lightborne is a pixel puzzle platformer built with Rust, Bevy, and LDTK - where you'll play as Lyra, a young goddess tasked with retrieving the shattered pieces of the Divine Prism by shooting and bouncing light beams to navigate rooms."
+        technologies="Rust, Bevy, WGSL, wgpu"
+        link="https://github.com/raybbian/Lightborne"
+        video="lightborne.mp4"
+      />
+      <Project
+        name="Hyprtasking"
+        description="Hyprtasking is a workspace management plugin for the Hyprland Wayland compositor. Written in C++, Hyprtasking utilizes OpenGL and existing Hyprland code (including my own contributions) to provide a seamless workspace overview to over 200 users and 180 stars."
+        technologies="OpenGL, C++"
+        link="https://github.com/raybbian/hyprtasking"
+        video="hyprtasking.mp4"
+      />
+      <Project
         name="iUtils"
         description="A Windows Kernel driver + WinUI 3 GUI App that exposes and enables hidden but useful iDevice USB interfaces. Implements what Apple didn't in the form of wired P2P ethernet, iPad screen sharing, etc. between Windows and iDevices."
         technologies="WDF, WinUI3, Visual Studio"
