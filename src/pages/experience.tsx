@@ -27,25 +27,25 @@ export default function Experience() {
       textAccent="text-ctp-lavender"
     >
       <ExperienceEntry
+        company="Jane Street"
+        title="Incoming Software Engineer Intern"
+        description="Starting Summer 2026"
+        from={new Date('May 1, 2026')}
+        to={new Date('Aug 1, 2026')}
+      />
+      <ExperienceEntry
+        company="GEICO"
+        title="Software Engineer Intern"
+        description="Engineered a Slack Bot to streamline internal access request workflows."
+        from={new Date('June 1, 2025')}
+        to={new Date('Aug 1, 2025')}
+      />
+      <ExperienceEntry
         company="GT SSDL"
         title="Undergrad Researcher"
         description="Developing ground operations software and systems for the upcoming GPDM cube satellite."
         from={new Date('Aug 1, 2024')}
-        to={new Date()}
-      />
-      <ExperienceEntry
-        company="DMECC"
-        title="Lead Developer"
-        description="Coordinated and developed an organization wide volunteer portal assisting tens of volunteers and students."
-        from={new Date('May 1, 2022')}
-        to={new Date('Aug 1, 2024')}
-      />
-      <ExperienceEntry
-        company="Epoch Tech"
-        title="English Instructor"
-        description="Instructed and assisted 25 Chinese workforce professionals with Business english weekly."
-        from={new Date('June 1, 2021')}
-        to={new Date('September 1, 2021')}
+        to={new Date('May 1, 2025')}
       />
     </Page>
   );

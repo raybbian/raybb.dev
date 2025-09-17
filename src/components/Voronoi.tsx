@@ -46,7 +46,8 @@ export default function Voronoi({ className }: {
 			if (!shouldRenderRef.current) return;
 
 			time /= 1000;
-			const delta = time - timeRef.current;
+			let delta = time - timeRef.current;
+			if (delta > 1) delta = 0;
 			timeRef.current = time;
 			curFrameTimeRef.current += delta;
 
