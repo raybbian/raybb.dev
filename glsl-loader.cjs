@@ -5,6 +5,7 @@
 // inlined once. Each included file is registered via addDependency so editing
 // a shared chunk rebuilds every shader that includes it. Kept in-repo to avoid
 // a third-party raw-loader dep.
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS loader */
 const fs = require("fs");
 const path = require("path");
 

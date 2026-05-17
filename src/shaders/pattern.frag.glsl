@@ -7,14 +7,11 @@ uniform vec3 u_accent;
 uniform vec2 u_seed;
 out vec4 o;
 
-// Bakes the koi pattern once into a texture (fish.frag then just samples it).
-// This is the body-pattern half of the old fish.frag — same math, minus the
-// fin sentinel. The [U_MIN,U_MAX] domain MUST track the body u extremes in
-// Fish.ts (SNOUT_U_TIP .. 1 + TIP_U_OVERSHOOT).
+// Baked once into a texture; fish.frag samples it. The [U_MIN,U_MAX] domain
+// MUST track the body u extremes in Fish.ts (SNOUT_U_TIP .. 1+TIP_U_OVERSHOOT).
 const float U_MIN = -0.125;          // SNOUT_U_TIP (-1/8)
 const float U_MAX = 1.0 + 1.0 / 30.0; // 1 + TIP_U_OVERSHOOT
 
-// --- Knobs (kept in lockstep with the old fish.frag.glsl) ------------------
 #define FBM_OCT 3
 #define WARP_OCT 2
 const vec2 HASH_K = vec2(123.34, 456.21);

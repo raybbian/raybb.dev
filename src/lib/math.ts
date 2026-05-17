@@ -5,6 +5,24 @@ export interface Vec2 {
 
 export const TWO_PI = Math.PI * 2;
 
+export const CLICK_ATTACK = 0.12; // s to pop up to peak while pressed
+export const CLICK_RELEASE = 0.5; // s to spring back after release
+export const CLICK_PEAK = 0.22; // additive scale delta at full size
+
+// Additive scale delta for a poked object. `held` (pointer still down): ease
+// out to CLICK_PEAK and stay there. Released: a damped spring from the peak
+// back through 0 (small undershoot, then settled). `elapsed` is seconds into
+// the current phase; idle == elapsed >= CLICK_RELEASE while not held -> 0.
+export function clickScale(elapsed: number, held: boolean): number {
+  if (held) {
+    const p = elapsed < CLICK_ATTACK ? elapsed / CLICK_ATTACK : 1;
+    return CLICK_PEAK * (1 - (1 - p) * (1 - p));
+  }
+  if (elapsed < 0 || elapsed >= CLICK_RELEASE) return 0;
+  const p = elapsed / CLICK_RELEASE;
+  return CLICK_PEAK * Math.exp(-5 * p) * Math.cos(p * Math.PI * 2);
+}
+
 export function v(x: number, y: number): Vec2 {
   return { x, y };
 }
@@ -39,8 +57,6 @@ export function setMag(a: Vec2, m: number): Vec2 {
   return { x: (a.x / len) * m, y: (a.y / len) * m };
 }
 
-// --- Util.pde port ---
-
 export function constrainDistance(pos: Vec2, anchor: Vec2, constraint: number): Vec2 {
   return add(anchor, setMag(sub(pos, anchor), constraint));
 }
@@ -62,8 +78,6 @@ export function constrainAngle(angle: number, anchor: number, constraint: number
   if (diff > constraint) return simplifyAngle(anchor - constraint);
   return simplifyAngle(anchor + constraint);
 }
-
-// --- Curve tessellation ---
 
 // Closed uniform Catmull-Rom through every point in `pts`.
 export function catmullRomClosed(pts: Vec2[], segments: number): Vec2[] {
@@ -98,7 +112,7 @@ export function catmullRomClosed(pts: Vec2[], segments: number): Vec2[] {
   return out;
 }
 
-// Cubic Bezier samples in (0, 1], excluding the start point.
+// Samples in (0, 1] — excludes the start point.
 export function cubicBezier(
   p0: Vec2,
   c1: Vec2,
@@ -122,12 +136,9 @@ export function cubicBezier(
   return out;
 }
 
-// --- Pooled (zero-allocation) variants ------------------------------------
-// Same math as above, but write into a caller-owned, reused output array
-// instead of allocating fresh `Vec2`s each call. Existing pool objects are
-// mutated in place; the pool only grows (once) and never shrinks below the
-// largest count seen. `out` MUST NOT alias `pts`.
-
+// Pooled variants: same math, but mutate a caller-owned reused array in
+// place instead of allocating Vec2s. The pool only grows. `out` MUST NOT
+// alias `pts`.
 export function poolAt(out: Vec2[], i: number): Vec2 {
   let p = out[i];
   if (p === undefined) {
@@ -137,8 +148,8 @@ export function poolAt(out: Vec2[], i: number): Vec2 {
   return p;
 }
 
-// Pooled `catmullRomClosed`. Returns `out`, with `out.length` set to the
-// sample count so callers can iterate it exactly like the allocating form.
+// `out.length` is set to the sample count so callers iterate it like the
+// allocating form.
 export function catmullRomClosedInto(
   pts: Vec2[],
   segments: number,
@@ -183,8 +194,7 @@ export function catmullRomClosedInto(
   return out;
 }
 
-// Pooled `cubicBezier` that appends its `segments` samples into `out`
-// starting at `off`, returning the next free index.
+// Appends `segments` samples into `out` at `off`; returns the next index.
 export function cubicBezierAppend(
   p0: Vec2,
   c1: Vec2,

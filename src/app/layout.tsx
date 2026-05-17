@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import FishBackground from "@/components/FishBackground";
+import NavDrawer from "@/components/NavDrawer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "koi.raybb.dev",
-  description: "A procedurally animated fish rendered in WebGL2.",
+  title: "Raymond Bian",
+  description:
+    "Raymond Bian — CS & Math @ Georgia Tech. Projects, experience, and a procedurally animated koi pond.",
 };
 
 export default function RootLayout({
@@ -25,9 +28,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full snap-y snap-mandatory antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <FishBackground />
+        <NavDrawer />
+        {children}
+      </body>
     </html>
   );
 }

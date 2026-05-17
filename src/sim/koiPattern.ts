@@ -4,11 +4,10 @@ export interface KoiColors {
   base: Rgba;
   mid: Rgba;
   accent: Rgba;
-  fin: Rgba; // slightly darker than base; flat fin color
+  fin: Rgba; // darker than base; flat fin color
   seed: [number, number];
 }
 
-// Seeded PRNG so each page load is deterministic given its seed.
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -27,21 +26,29 @@ export function hslToRgb(h: number, s: number, l: number): Rgba {
   return [f(0), f(8), f(4), 1];
 }
 
-// Hue/sat/light ranges per koi pigment family; jittered per fish.
+// [hLo, hHi, sLo, sHi, lLo, lHi] per pigment family; jittered per fish.
 const BASE_FAMILIES: [number, number, number, number, number, number][] = [
   [0.0, 0.0, 0.0, 0.06, 0.93, 1.0], // porcelain white
   [0.09, 0.13, 0.2, 0.35, 0.84, 0.92], // warm cream
 ];
+// Hue bands are narrow and non-wrapping: a [0.99,0.03] span lerps the long
+// way through cyan/green/purple (neon), so red sits near 0.0 instead.
 const MID_FAMILIES: [number, number, number, number, number, number][] = [
-  [0.99, 0.03, 0.7, 0.9, 0.45, 0.56], // hi red
-  [0.05, 0.08, 0.8, 0.95, 0.5, 0.6], // persimmon orange
+  [0.04, 0.08, 0.8, 0.95, 0.5, 0.6], // persimmon orange
+  [0.0, 0.02, 0.72, 0.9, 0.52, 0.62], // soft pinkish red
 ];
 const ACCENT_FAMILIES: [number, number, number, number, number, number][] = [
   [0.0, 0.0, 0.0, 0.05, 0.05, 0.13], // sumi black
   [0.62, 0.68, 0.25, 0.45, 0.16, 0.26], // deep indigo
 ];
 
-const FIN_DARKEN = 0.82; // fin tone = base * this (toward black)
+// Rare metallic Ogon body: warm gold instead of white/cream.
+const GOLDEN_CHANCE = 0.12;
+const GOLDEN_FAMILY: [number, number, number, number, number, number] = [
+  0.11, 0.14, 0.78, 0.92, 0.52, 0.6,
+];
+
+const FIN_DARKEN = 0.82; // fin tone = base * this
 const SEED_SCALE = 1000; // shader noise-field offset spread
 
 function pick(
@@ -54,15 +61,15 @@ function pick(
   return hslToRgb(lerp(hLo, hHi), lerp(sLo, sHi), lerp(lLo, lHi));
 }
 
-// Tones rgb down toward black, preserving alpha.
 function darken([r, g, b, a]: Rgba, f: number): Rgba {
   return [r * f, g * f, b * f, a];
 }
 
-// Three koi-believable colors, a fin tone (slightly darker base), and a
-// noise-field offset, all driven by `rng`.
 export function pickKoiColors(rng: () => number): KoiColors {
-  const base = pick(rng, BASE_FAMILIES);
+  const base =
+    rng() < GOLDEN_CHANCE
+      ? pick(rng, [GOLDEN_FAMILY])
+      : pick(rng, BASE_FAMILIES);
   return {
     base,
     mid: pick(rng, MID_FAMILIES),

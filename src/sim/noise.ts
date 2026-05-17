@@ -1,6 +1,5 @@
-// Dependency-free 1D value noise: hash integer lattice, smoothstep-lerp
-// between neighbours. C1-continuous, so it drives headings/speeds without
-// the jitter a per-frame random would add. Range [0, 1).
+// 1D value noise, range [0, 1). C1-continuous so it drives headings/speeds
+// without the jitter a per-frame random would add.
 
 function hash(i: number): number {
   let n = (i | 0) * 374761393 + 668265263;

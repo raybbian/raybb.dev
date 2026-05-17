@@ -19,14 +19,12 @@ const float NDC_SCALE = 2.0;
 const float NDC_OFF = 1.0;
 
 void main() {
-  // Place the petal along its outward axis: root at i_inner, tip at
-  // i_inner + i_len; the box is padded past [0,1]x[-1,1] so the fragment
-  // shader's rounded edge has bleed room and is not clipped by the quad.
+  // Box is padded past [0,1]x[-1,1] so the frag shader's rounded edge has
+  // bleed room and is not clipped by the quad.
   float dist = i_inner + a_unit.x * i_len;
   float perp = a_unit.y * i_half;
   vec2 dir = vec2(cos(i_angle), sin(i_angle));
   vec2 nrm = vec2(-dir.y, dir.x);
-  // Perfectly circular bloom: equal radial scale in x and y, rings concentric.
   vec2 world = i_center + dir * dist + nrm * perp + u_castOffset;
   vec2 clip = vec2(world.x / u_res.x * NDC_SCALE - NDC_OFF,
                    NDC_OFF - (world.y - u_scroll) / u_res.y * NDC_SCALE);

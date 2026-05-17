@@ -1,8 +1,7 @@
 #version 300 es
 precision mediump float;
 in vec2 v_local; // A=(0,-1) B=(0,1) C=(1,0)
-// Caster pass: reuse lotus.vert, replicate lotus.frag's triangular-squircle
-// petal so the shadow keeps the real petal shape, and emit height.
+// Caster: replicate lotus.frag's petal so the shadow keeps the real shape.
 uniform float u_castHeight;
 layout(location = 0) out vec4 o;
 
@@ -30,6 +29,6 @@ void main() {
   float dCir = length(v_local - CIRCLE_C) - CIRCLE_R;
   float d = mix(dTri, dCir, BULGE);
   float aa = fwidth(d);
-  if (1.0 - smoothstep(-aa, aa, d) < 0.5) discard; // outside the petal
+  if (1.0 - smoothstep(-aa, aa, d) < 0.5) discard;
   o = vec4(u_castHeight, 1.0, 0.0, 0.0); // premultiplied (height, coverage)
 }

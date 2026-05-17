@@ -1,6 +1,6 @@
 import type { Vec2 } from "./math";
 
-// Standard shoelace: > 0 means CCW, matching the ear-convexity test below.
+// Shoelace; > 0 means CCW, matching the ear-convexity test below.
 function signedArea(poly: Vec2[]): number {
   let a = 0;
   for (let i = 0; i < poly.length; i++) {
@@ -19,7 +19,7 @@ function inTriangle(p: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
   return !(neg && pos);
 }
 
-// Ear-clipping triangulation of a simple polygon. Returns index triplets.
+// Ear-clipping; returns index triplets.
 export function triangulate(poly: Vec2[]): number[] {
   const n = poly.length;
   if (n < 3) return [];
@@ -63,10 +63,9 @@ export function triangulate(poly: Vec2[]): number[] {
   return tris;
 }
 
-// Zero-allocation `triangulate`: same ear-clipping, but reads the first `n`
-// vertices of `poly`, uses the caller-owned `idx` array as scratch (grown
-// once, never reallocated), and writes `base + index` triplets straight into
-// the `out` Uint32Array starting at `off`. Returns the new write offset.
+// Zero-alloc `triangulate`: reads the first `n` verts of `poly`, uses
+// caller-owned `idx` as scratch, writes `base + index` triplets into `out`
+// at `off`. Returns the new write offset.
 export function triangulateInto(
   poly: Vec2[],
   n: number,

@@ -5,12 +5,11 @@ uniform vec2 u_res;
 uniform float u_time;
 out vec4 o;
 
-// Ambient water refraction, baked once per frame into a low-res texture and
-// sampled by water.frag (the displacement is low-frequency, so quarter-res is
-// visually lossless and removes 4 fullscreen fbm evaluations). Knobs/noise are
-// kept in lockstep with water.frag.glsl.
-const float REFRACT_FREQ = 3.0; // ambient noise sampling scale (screens)
-const float REFRACT_SPEED = 0.15;// ambient drift speed (slow)
+// Baked once per frame at low-res: the displacement is low-frequency, so
+// quarter-res is visually lossless and saves 4 fullscreen fbm evals.
+// Noise kept in lockstep with water.frag.glsl.
+const float REFRACT_FREQ = 3.0;
+const float REFRACT_SPEED = 0.15;
 
 float hash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -36,7 +35,7 @@ void main() {
   vec2 disp = vec2(
     fbm(np + vec2(t, 0.0)) - fbm(np - vec2(t, 0.0)),
     fbm(np.yx + vec2(0.0, t)) - fbm(np.yx - vec2(0.0, t)));
-  // |disp| < 1 (fbm sums to <0.875), so this stays in [0,1]; water.frag
+  // |disp| < 1 (fbm sums to <0.875) so this stays in [0,1]; water.frag
   // reconstructs via disp = tex.xy * 2 - 1.
   o = vec4(disp * 0.5 + 0.5, 0.0, 1.0);
 }

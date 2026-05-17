@@ -19,12 +19,11 @@ import FS from "@/shaders/lilypad.frag.glsl";
 import CAST_FS from "@/shaders/lilypad.shadow.frag.glsl";
 
 const CIRCLE_SEG = 64;
-const MAX_LILYPADS = 32;
 
 export class LilypadRenderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
-  private castProg: WebGLProgram; // same VS, height-output FS (real notch)
+  private castProg: WebGLProgram; // same VS, height-output FS
   private vao: WebGLVertexArrayObject;
   private castVao: WebGLVertexArrayObject;
   private circleVbo: WebGLBuffer;
@@ -36,7 +35,7 @@ export class LilypadRenderer {
   private castScrollLoc: WebGLUniformLocation;
   private castHeightLoc: WebGLUniformLocation;
   private castOffsetLoc: WebGLUniformLocation;
-  private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw
+  private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw (shares cast VS)
   private sh: {
     tex: WebGLUniformLocation;
     fragRes: WebGLUniformLocation;
@@ -47,7 +46,7 @@ export class LilypadRenderer {
     fade: WebGLUniformLocation;
     recv: WebGLUniformLocation;
   };
-  private scratch = new Float32Array(MAX_LILYPADS * LILYPAD_INST_FLOATS);
+  private capacityFloats = 0; // instVbo size, grown on demand
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -80,14 +79,13 @@ export class LilypadRenderer {
     gl.bufferData(gl.ARRAY_BUFFER, circle, gl.STATIC_DRAW);
     this.instVbo = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
-    gl.bufferData(gl.ARRAY_BUFFER, this.scratch.byteLength, gl.DYNAMIC_DRAW);
 
     this.vao = this.makeVao(this.prog);
     this.castVao = this.makeVao(this.castProg);
   }
 
-  // Builds a VAO binding the shared circle + instance buffers for `prog`'s
-  // own attribute locations (the color and cast programs may differ).
+  // Binds the shared buffers for `prog`'s own attribute locations (color and
+  // cast programs may differ).
   private makeVao(prog: WebGLProgram): WebGLVertexArrayObject {
     const gl = this.gl;
     const vao = gl.createVertexArray()!;
@@ -109,22 +107,30 @@ export class LilypadRenderer {
     return vao;
   }
 
-  private upload(data: number[]): number {
+  private upload(data: Float32Array, count: number) {
     const gl = this.gl;
-    const n = Math.min(data.length, this.scratch.length);
-    for (let i = 0; i < n; i++) this.scratch[i] = data[i];
+    const floats = count * LILYPAD_INST_FLOATS;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.scratch, 0, n);
-    return n;
+    if (floats > this.capacityFloats) {
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+      this.capacityFloats = floats;
+    } else {
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, floats);
+    }
   }
 
   // Caster pass: real pad outline (notch carved) into the bound height mask.
-  // ShadowRenderer.begin() has set MAX-blend / no-depth state.
-  cast(data: number[], width: number, height: number, scroll: number) {
-    const count = data.length / LILYPAD_INST_FLOATS;
+  // No-blend / no-depth state is set by ShadowRenderer.begin().
+  cast(
+    data: Float32Array,
+    count: number,
+    width: number,
+    height: number,
+    scroll: number,
+  ) {
     if (count === 0) return;
     const gl = this.gl;
-    this.upload(data);
+    this.upload(data, count);
     gl.useProgram(this.castProg);
     const mo = maxCastOffset();
     gl.uniform2f(this.castResLoc, width + mo[0], height + mo[1]);
@@ -139,7 +145,8 @@ export class LilypadRenderer {
 
   // Visible pass; also receives shadows (lotuses cast onto the pads).
   draw(
-    data: number[],
+    data: Float32Array,
+    count: number,
     width: number,
     height: number,
     scroll: number,
@@ -147,10 +154,9 @@ export class LilypadRenderer {
     fragW: number,
     fragH: number,
   ) {
-    const count = data.length / LILYPAD_INST_FLOATS;
     if (count === 0) return;
     const gl = this.gl;
-    this.upload(data);
+    this.upload(data, count);
     gl.useProgram(this.prog);
     gl.uniform2f(this.resLoc, width, height);
     gl.uniform1f(this.scrollLoc, scroll);
@@ -161,7 +167,7 @@ export class LilypadRenderer {
     gl.uniform1f(this.sh.bias, SHADOW_BIAS);
     gl.uniform1f(this.sh.fade, SHADOW_FADE);
     gl.uniform1f(this.sh.recv, LILYPAD_H);
-    gl.uniform2f(this.offsetLoc, 0, 0); // visible pad sits at its real position
+    gl.uniform2f(this.offsetLoc, 0, 0); // no cast offset on visible draws
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, shadowTex);
     gl.uniform1i(this.sh.tex, 0);

@@ -9,8 +9,8 @@ import VS from "@/shaders/lotus.vert.glsl";
 import FS from "@/shaders/lotus.frag.glsl";
 import CAST_FS from "@/shaders/lotus.shadow.frag.glsl";
 
-// Local-space bleed past the [0,1]x[-1,1] petal box so the fragment shader's
-// rounded edge (ROUND in lotus.frag) is never clipped by the quad.
+// Bleed past the [0,1]x[-1,1] petal box so lotus.frag's rounded edge (ROUND)
+// is never clipped by the quad.
 const PAD = 0.55;
 
 function petalQuad(): Float32Array {
@@ -28,7 +28,7 @@ function petalQuad(): Float32Array {
 export class LotusRenderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
-  private castProg: WebGLProgram; // same VS, height-output FS (real petal)
+  private castProg: WebGLProgram; // same VS, height-output FS
   private vao: WebGLVertexArrayObject;
   private castVao: WebGLVertexArrayObject;
   private quadVbo: WebGLBuffer;
@@ -40,7 +40,7 @@ export class LotusRenderer {
   private castScrollLoc: WebGLUniformLocation;
   private castHeightLoc: WebGLUniformLocation;
   private castOffsetLoc: WebGLUniformLocation;
-  private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw
+  private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw (shares cast VS)
   private capacityFloats = 0;
 
   constructor(gl: WebGL2RenderingContext) {
@@ -101,7 +101,7 @@ export class LotusRenderer {
     }
   }
 
-  // Caster pass: real petal shape into the bound height mask. MAX-blend /
+  // Caster pass: real petal shape into the bound height mask. No-blend /
   // no-depth state is set by ShadowRenderer.begin().
   cast(
     data: Float32Array,
@@ -125,7 +125,7 @@ export class LotusRenderer {
     gl.bindVertexArray(null);
   }
 
-  // Visible pass, drawn after the water composite so the flowers sit on top.
+  // Must be drawn after the water composite so the flowers sit on top.
   draw(
     data: Float32Array,
     count: number,
@@ -139,7 +139,7 @@ export class LotusRenderer {
     gl.useProgram(this.prog);
     gl.uniform2f(this.resLoc, width, height);
     gl.uniform1f(this.scrollLoc, scroll);
-    gl.uniform2f(this.offsetLoc, 0, 0); // visible flower at its real position
+    gl.uniform2f(this.offsetLoc, 0, 0); // no cast offset on visible draws
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindVertexArray(this.vao);

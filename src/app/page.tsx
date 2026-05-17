@@ -1,50 +1,50 @@
-import FishBackground from "@/components/FishBackground";
+import Hero from "@/components/Hero";
+import Section from "@/components/Section";
+import Entry from "@/components/Entry";
+import SocialLinks from "@/components/SocialLinks";
+import ProjectsCarousel from "@/components/ProjectsCarousel";
+import ScrollSpy from "@/components/ScrollSpy";
+import { experience } from "@/content/experience";
+import { about } from "@/content/about";
 
 export default function Home() {
   return (
-    <>
-      <FishBackground />
-      <main className="flex flex-col">
-        <section className="flex min-h-screen snap-start flex-col items-center justify-center px-6 text-center">
-          <h1 className="text-5xl font-semibold tracking-tight sm:text-7xl">
-            koi.raybb.dev
-          </h1>
-          <p className="mt-4 max-w-md text-lg text-white/70">
-            A procedurally animated fish, rendered in WebGL. Move your cursor —
-            then keep scrolling.
-          </p>
-        </section>
+    <main className="flex flex-col">
+      <ScrollSpy />
+      <Hero />
 
-        <section className="flex min-h-screen snap-start flex-col items-center justify-center px-6 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
-            Procedural, not pre-baked
-          </h2>
-          <p className="mt-4 max-w-md text-lg text-white/70">
-            Each koi is a spring-driven spine wrapped in a Catmull-Rom body. No
-            sprites, no rigs — just math resolved every frame.
-          </p>
-        </section>
+      <Section id="projects" lead="Here are my" title="Projects." full>
+        <ProjectsCarousel />
+      </Section>
 
-        <section className="flex min-h-screen snap-start flex-col items-center justify-center px-6 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
-            Water you can see through
-          </h2>
-          <p className="mt-4 max-w-md text-lg text-white/70">
-            The scene is captured into a multisampled buffer, then refracted and
-            rippled in a single composite pass over the pond.
-          </p>
-        </section>
+      <Section id="experience" lead="This is my" title="Experience.">
+        <div className="flex flex-col gap-5">
+          {experience.map((e) => (
+            <Entry
+              key={e.company}
+              title={e.company}
+              meta={e.period}
+              titleAccent={`${e.role} · `}
+              description={e.description}
+            />
+          ))}
+        </div>
+      </Section>
 
-        <section className="flex min-h-screen snap-start flex-col items-center justify-center px-6 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-5xl">
-            The pond follows you
-          </h2>
-          <p className="mt-4 max-w-md text-lg text-white/70">
-            The water drifts at a fraction of the page speed — a slow parallax
-            beneath the words.
-          </p>
-        </section>
-      </main>
-    </>
+      <Section id="about" lead="This is" title="who I am.">
+        <div className="flex flex-col gap-5">
+          {about.map((a) => (
+            <Entry
+              key={a.title}
+              title={a.title}
+              description={a.description}
+            />
+          ))}
+          <div className="mt-4">
+            <SocialLinks />
+          </div>
+        </div>
+      </Section>
+    </main>
   );
 }

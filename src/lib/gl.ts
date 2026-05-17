@@ -14,7 +14,7 @@ export function compileShader(
   return sh;
 }
 
-// Unit-circle triangle fan (origin + rim pairs), interleaved x,y for GL.
+// Triangle fan: origin + rim pair per segment, interleaved x,y.
 export function unitCircleMesh(segments: number): Float32Array {
   const data: number[] = [];
   for (let i = 0; i < segments; i++) {
@@ -25,8 +25,7 @@ export function unitCircleMesh(segments: number): Float32Array {
   return new Float32Array(data);
 }
 
-// Binds tightly-packed per-instance float attributes (divisor 1) on the bound
-// VAO/VBO. `attribs` is [name, size] in buffer order; returns floats/instance.
+// `attribs` is [name, size] in buffer order; returns floats/instance.
 export function bindInstancedFloatAttribs(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,

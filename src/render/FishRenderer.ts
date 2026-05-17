@@ -23,26 +23,21 @@ import fullscreenVert from "@/shaders/water.vert.glsl";
 import patternFrag from "@/shaders/pattern.frag.glsl";
 import heightFrag from "@/shaders/height.frag.glsl";
 
-// --- Buffer / pipeline sizing (single place to retune scratch + layout) ----
 const MAX_VERTS = 8192;
 const MAX_INDICES = 24576;
-const CIRCLE_SEG = 48; // unit-circle tessellation for fin/eye instances
+const CIRCLE_SEG = 48;
 const VERT_FLOATS = 8; // x,y,r,g,b,a,u,v
 const INST_FLOATS = 9; // cx,cy,rx,ry,rot,r,g,b,a
-const MAX_FISH_INSTANCES = 32; // fins + eyes upper bound per draw
-const MAX_PALETTES = 8; // one baked pattern texture per distinct fish
-// Baked koi-pattern texture. Body is ~ASPECT(3)x longer than wide, so spend
-// resolution along u. Static per session -> baked once per palette.
+const MAX_FISH_INSTANCES = 32;
+const MAX_PALETTES = 12;
+// Body is ~ASPECT(3)x longer than wide, so spend resolution along u.
 const PATTERN_W = 2048;
 const PATTERN_H = 768;
 const BYTES_PER_FLOAT = 4;
 const VERT_STRIDE = VERT_FLOATS * BYTES_PER_FLOAT;
-const ATTR_POS_OFFSET = 0 * BYTES_PER_FLOAT; // a_pos   (x,y)
-const ATTR_COLOR_OFFSET = 2 * BYTES_PER_FLOAT; // a_color (r,g,b,a)
-const ATTR_UV_OFFSET = 6 * BYTES_PER_FLOAT; // a_uv    (u,v)
-// AA comes from the context's MSAA (silhouette) plus the fish fragment
-// shader's fwidth edges (the pattern); FBM/WARP octaves now live as
-// #defines in fish.frag.glsl.
+const ATTR_POS_OFFSET = 0 * BYTES_PER_FLOAT;
+const ATTR_COLOR_OFFSET = 2 * BYTES_PER_FLOAT;
+const ATTR_UV_OFFSET = 6 * BYTES_PER_FLOAT;
 
 interface ShadowLocs {
   tex: WebGLUniformLocation;
@@ -53,6 +48,7 @@ interface ShadowLocs {
   bias: WebGLUniformLocation;
   fade: WebGLUniformLocation;
   recv: WebGLUniformLocation;
+  dbg: WebGLUniformLocation;
 }
 
 function shadowLocs(
@@ -69,6 +65,7 @@ function shadowLocs(
     bias: u("u_shadowBias"),
     fade: u("u_shadowFade"),
     recv: u("u_recvHeight"),
+    dbg: u("u_shadowDebug"),
   };
 }
 
@@ -86,8 +83,8 @@ export class FishRenderer {
   private instVbo: WebGLBuffer;
   private circleCount: number;
 
-  // Caster pipeline: same vertex shaders, a height-output fragment shader,
-  // their own VAOs (cast programs may assign different attribute locations).
+  // Caster pipeline: same vertex shaders, height-output fragment shader, own
+  // VAOs (cast programs may assign different attribute locations).
   private solidCastProg: WebGLProgram;
   private ellipseCastProg: WebGLProgram;
   private solidCastVao: WebGLVertexArrayObject;
@@ -111,17 +108,16 @@ export class FishRenderer {
   private patternLoc: WebGLUniformLocation;
   private solidDepthLoc: WebGLUniformLocation;
   private ellipseDepthLoc: WebGLUniformLocation;
-  private depth = 0; // submergence for the current draw(), set per frame
+  private depth = 0; // submergence for the current draw()
   private scroll = 0; // parallax offset (logical px) for the current draw()
 
-  // Cast-shadow sampling (mask owned by ShadowRenderer, bound on unit 1).
+  // Cast-shadow mask owned by ShadowRenderer, bound on unit 1.
   private solidShadow: ShadowLocs;
   private ellipseShadow: ShadowLocs;
   private shadowTex: WebGLTexture | null = null;
-  private fragW = 0; // drawing-buffer px (canvas.width/height)
+  private fragW = 0; // drawing-buffer px
   private fragH = 0;
 
-  // Pattern-bake pipeline (fullscreen triangle -> patternTex, once).
   private patternProg: WebGLProgram;
   private patternFbo: WebGLFramebuffer;
   private patternTexes: WebGLTexture[] = [];
@@ -174,9 +170,7 @@ export class FishRenderer {
     this.pSeedLoc = gl.getUniformLocation(this.patternProg, "u_seed")!;
     this.bakeVao = gl.createVertexArray()!; // empty: gl_VertexID triangle
     this.patternFbo = gl.createFramebuffer()!;
-    // Pattern textures are created + baked per palette in setPalettes().
 
-    // Shared GPU buffers (the colour + caster VAOs both reference these).
     this.solidVbo = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.solidVbo);
     gl.bufferData(
@@ -207,8 +201,8 @@ export class FishRenderer {
     this.ellipseCastVao = this.buildEllipseVao(this.ellipseCastProg);
   }
 
-  // VAO binding the shared body buffers for `prog`'s own attribute locations
-  // (the colour and caster programs may assign them differently).
+  // Binds the shared body buffers for `prog`'s own attribute locations (colour
+  // and caster programs may assign them differently).
   private buildSolidVao(prog: WebGLProgram): WebGLVertexArrayObject {
     const gl = this.gl;
     const vao = gl.createVertexArray()!;
@@ -253,8 +247,8 @@ export class FishRenderer {
     return vao;
   }
 
-  // Caster pass: the fish's real silhouette (body mesh + fins) into the bound
-  // height mask. MAX-blend / no-depth state is set by ShadowRenderer.begin().
+  // Caster pass: real silhouette (body mesh + fins) into the bound height
+  // mask. No-blend / no-depth state is set by ShadowRenderer.begin().
   cast(
     geo: FishGeometry,
     width: number,
@@ -276,7 +270,18 @@ export class FishRenderer {
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, geo.verts, 0, geo.vCount);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.solidIbo);
       gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, geo.indices, 0, geo.iCount);
-      gl.drawElements(gl.TRIANGLES, geo.iCount, gl.UNSIGNED_INT, 0);
+      // The dorsal self-shadow band is a fake (visual-only) caster: skip its
+      // index range so it never enters the height mask. Caudal+body, then the
+      // dorsal fin, both at the unchanged castHeight/offset.
+      gl.drawElements(
+        gl.TRIANGLES, geo.shadowIdxStart, gl.UNSIGNED_INT, 0,
+      );
+      gl.drawElements(
+        gl.TRIANGLES,
+        geo.iCount - geo.dorsalIdxStart,
+        gl.UNSIGNED_INT,
+        geo.dorsalIdxStart * 4,
+      );
     }
     if (geo.finCount > 0) {
       gl.useProgram(this.ellipseCastProg);
@@ -294,9 +299,8 @@ export class FishRenderer {
     gl.bindVertexArray(null);
   }
 
-  // Each palette is fixed per session, so its procedural koi pattern is baked
-  // once here into its own texture; draw() binds the one for the fish being
-  // drawn and fish.frag just samples it. Capped at MAX_PALETTES.
+  // Palettes are fixed per session: bake each procedural koi pattern once into
+  // its own texture (capped at MAX_PALETTES); draw() just samples it.
   setPalettes(palettes: KoiColors[]) {
     const gl = this.gl;
     const rgb3 = (c: number[]): [number, number, number] => [c[0], c[1], c[2]];
@@ -335,16 +339,16 @@ export class FishRenderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  // Latches the per-frame cast-shadow mask + drawing-buffer size. Called once
-  // before the fish loop; the actual uniforms are pushed per program in draw().
+  // Latches the per-frame mask + drawing-buffer size; uniforms are pushed per
+  // program later in draw().
   prepareShadow(tex: WebGLTexture, fragW: number, fragH: number) {
     this.shadowTex = tex;
     this.fragW = fragW;
     this.fragH = fragH;
   }
 
-  // Pushes the shadow uniforms and binds the mask on texture unit 1, leaving
-  // unit 0 active (the solid pass keeps its pattern bound there).
+  // Binds the mask on unit 1, leaving unit 0 active (the solid pass keeps its
+  // pattern bound there).
   private applyShadow(l: ShadowLocs) {
     const gl = this.gl;
     gl.uniform2f(l.fragRes, this.fragW, this.fragH);
@@ -354,6 +358,13 @@ export class FishRenderer {
     gl.uniform1f(l.bias, SHADOW_BIAS);
     gl.uniform1f(l.fade, SHADOW_FADE);
     gl.uniform1f(l.recv, fishHeight(this.depth));
+    gl.uniform1f(
+      l.dbg,
+      typeof window !== "undefined" &&
+        (window as unknown as { __shadowDebug?: boolean }).__shadowDebug
+        ? 1
+        : 0,
+    );
     if (this.shadowTex) {
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
@@ -374,7 +385,7 @@ export class FishRenderer {
     gl.uniform2f(this.ellipseResLoc, res[0], res[1]);
     gl.uniform1f(this.ellipseScrollLoc, this.scroll);
     gl.uniform1f(this.ellipseDepthLoc, this.depth);
-    gl.uniform2f(this.ellipseOffset, 0, 0); // visible fins at real position
+    gl.uniform2f(this.ellipseOffset, 0, 0); // no cast offset on visible draws
     this.applyShadow(this.ellipseShadow);
     gl.bindVertexArray(this.ellipseVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
@@ -382,8 +393,7 @@ export class FishRenderer {
     gl.drawArraysInstanced(gl.TRIANGLES, 0, this.circleCount, count);
   }
 
-  // Draws fins/body/eyes into the already-prepared scene FBO. `depth` is the
-  // fish's submergence (0..1); it is written to the depth attachment so the
+  // `depth` is submergence (0..1), written to the depth attachment so the
   // water pass can tint/refract by it.
   draw(
     geo: FishGeometry,
@@ -398,10 +408,9 @@ export class FishRenderer {
     this.depth = depth;
     this.scroll = scroll;
 
-    // Pectoral + ventral fins (under body)
+    // Painter order: fins under body, eyes on top.
     this.drawInstances(geo.finInstances, geo.finCount, res);
 
-    // Caudal + body + dorsal (single solid draw, painter order via index order)
     const vCount = geo.vCount;
     const iCount = geo.iCount;
     if (iCount > 0) {
@@ -409,7 +418,7 @@ export class FishRenderer {
       gl.uniform2f(this.solidResLoc, width, height);
       gl.uniform1f(this.solidScrollLoc, scroll);
       gl.uniform1f(this.solidDepthLoc, depth);
-      gl.uniform2f(this.solidOffset, 0, 0); // visible body at real position
+      gl.uniform2f(this.solidOffset, 0, 0); // no cast offset on visible draws
       gl.activeTexture(gl.TEXTURE0);
       const tex =
         this.patternTexes[Math.min(paletteIndex, this.patternTexes.length - 1)];
@@ -421,10 +430,30 @@ export class FishRenderer {
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, geo.verts, 0, vCount);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.solidIbo);
       gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, geo.indices, 0, iCount);
-      gl.drawElements(gl.TRIANGLES, iCount, gl.UNSIGNED_INT, 0);
+      // Caudal + body (opaque), then the dorsal self-shadow band (alpha-blended
+      // black = multiply-darken the body), then the opaque dorsal on top so the
+      // band only shows fanning out from the fin's down-sun side.
+      gl.drawElements(
+        gl.TRIANGLES, geo.shadowIdxStart, gl.UNSIGNED_INT, 0,
+      );
+      const hadBlend = gl.isEnabled(gl.BLEND);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawElements(
+        gl.TRIANGLES,
+        geo.dorsalIdxStart - geo.shadowIdxStart,
+        gl.UNSIGNED_INT,
+        geo.shadowIdxStart * 4,
+      );
+      if (!hadBlend) gl.disable(gl.BLEND);
+      gl.drawElements(
+        gl.TRIANGLES,
+        iCount - geo.dorsalIdxStart,
+        gl.UNSIGNED_INT,
+        geo.dorsalIdxStart * 4,
+      );
     }
 
-    // Eyes (on top)
     this.drawInstances(geo.eyeInstances, geo.eyeCount, res);
     gl.bindVertexArray(null);
   }

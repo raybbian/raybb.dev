@@ -9,9 +9,8 @@ import FS from "@/shaders/treat.frag.glsl";
 
 const CIRCLE_SEG = 32; // morsels are tiny — a coarse fan is plenty
 
-// Instanced tan disks. Drawn into the scene MRT (before the water composite)
-// so the depth attachment + water pass tint each treat bluer as it sinks,
-// exactly like the fish bodies.
+// Must draw into the scene MRT before the water composite so the depth
+// attachment + water pass tint each treat bluer as it sinks (like fish bodies).
 export class TreatRenderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
@@ -66,8 +65,7 @@ export class TreatRenderer {
     gl.uniform1f(this.scrollLoc, scroll);
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
-    // Cap is fixed for the session: grow once to the full scratch, then
-    // stream the live poses into it.
+    // Grow once to full scratch, then stream live poses (cap fixed per session).
     if (floats > this.capacityFloats) {
       gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
       this.capacityFloats = data.length;

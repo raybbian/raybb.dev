@@ -7,6 +7,44 @@
 
 html {
   background: #2f8a86;
+  scroll-behavior: smooth;
+  /* Sections opt in via `snap-start`; pages without snap points (blog)
+     scroll normally. */
+  scroll-snap-type: y mandatory;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.6em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-word {
+  opacity: 0;
+  animation: hero-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .hero-word {
+    opacity: 1;
+    animation: none;
+  }
 }
 
 body {
