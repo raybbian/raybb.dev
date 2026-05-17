@@ -1,0 +1,185 @@
+import {
+  bindInstancedFloatAttribs,
+  createProgram,
+  unitCircleMesh,
+} from "@/lib/gl";
+import { LILYPAD_INST_FLOATS } from "@/sim/Lilypads";
+import {
+  LILYPAD_H,
+  SHADOW_BIAS,
+  SHADOW_DARKNESS,
+  SHADOW_FADE,
+  SHADOW_K,
+  SHADOW_SUN_DIR,
+  castShadowOffset,
+  maxCastOffset,
+} from "@/render/ShadowRenderer";
+import VS from "@/shaders/lilypad.vert.glsl";
+import FS from "@/shaders/lilypad.frag.glsl";
+import CAST_FS from "@/shaders/lilypad.shadow.frag.glsl";
+
+const CIRCLE_SEG = 64;
+const MAX_LILYPADS = 32;
+
+export class LilypadRenderer {
+  private gl: WebGL2RenderingContext;
+  private prog: WebGLProgram;
+  private castProg: WebGLProgram; // same VS, height-output FS (real notch)
+  private vao: WebGLVertexArrayObject;
+  private castVao: WebGLVertexArrayObject;
+  private circleVbo: WebGLBuffer;
+  private instVbo: WebGLBuffer;
+  private circleCount: number;
+  private resLoc: WebGLUniformLocation;
+  private scrollLoc: WebGLUniformLocation;
+  private castResLoc: WebGLUniformLocation;
+  private castScrollLoc: WebGLUniformLocation;
+  private castHeightLoc: WebGLUniformLocation;
+  private castOffsetLoc: WebGLUniformLocation;
+  private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw
+  private sh: {
+    tex: WebGLUniformLocation;
+    fragRes: WebGLUniformLocation;
+    sunDir: WebGLUniformLocation;
+    k: WebGLUniformLocation;
+    dark: WebGLUniformLocation;
+    bias: WebGLUniformLocation;
+    fade: WebGLUniformLocation;
+    recv: WebGLUniformLocation;
+  };
+  private scratch = new Float32Array(MAX_LILYPADS * LILYPAD_INST_FLOATS);
+
+  constructor(gl: WebGL2RenderingContext) {
+    this.gl = gl;
+    this.prog = createProgram(gl, VS, FS);
+    this.castProg = createProgram(gl, VS, CAST_FS);
+    this.resLoc = gl.getUniformLocation(this.prog, "u_res")!;
+    this.scrollLoc = gl.getUniformLocation(this.prog, "u_scroll")!;
+    this.castResLoc = gl.getUniformLocation(this.castProg, "u_res")!;
+    this.castScrollLoc = gl.getUniformLocation(this.castProg, "u_scroll")!;
+    this.castHeightLoc = gl.getUniformLocation(this.castProg, "u_castHeight")!;
+    this.castOffsetLoc =
+      gl.getUniformLocation(this.castProg, "u_castOffset")!;
+    this.offsetLoc = gl.getUniformLocation(this.prog, "u_castOffset")!;
+    const u = (n: string) => gl.getUniformLocation(this.prog, n)!;
+    this.sh = {
+      tex: u("u_shadow"),
+      fragRes: u("u_fragRes"),
+      sunDir: u("u_sunDir"),
+      k: u("u_shadowK"),
+      dark: u("u_shadowDark"),
+      bias: u("u_shadowBias"),
+      fade: u("u_shadowFade"),
+      recv: u("u_recvHeight"),
+    };
+
+    const circle = unitCircleMesh(CIRCLE_SEG);
+    this.circleCount = circle.length / 2;
+    this.circleVbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.circleVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, circle, gl.STATIC_DRAW);
+    this.instVbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, this.scratch.byteLength, gl.DYNAMIC_DRAW);
+
+    this.vao = this.makeVao(this.prog);
+    this.castVao = this.makeVao(this.castProg);
+  }
+
+  // Builds a VAO binding the shared circle + instance buffers for `prog`'s
+  // own attribute locations (the color and cast programs may differ).
+  private makeVao(prog: WebGLProgram): WebGLVertexArrayObject {
+    const gl = this.gl;
+    const vao = gl.createVertexArray()!;
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.circleVbo);
+    const aUnit = gl.getAttribLocation(prog, "a_unit");
+    gl.enableVertexAttribArray(aUnit);
+    gl.vertexAttribPointer(aUnit, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
+    bindInstancedFloatAttribs(gl, prog, [
+      ["i_center", 2],
+      ["i_radius", 1],
+      ["i_rot", 1],
+      ["i_notch", 1],
+      ["i_seed", 1],
+      ["i_color", 3],
+    ]);
+    gl.bindVertexArray(null);
+    return vao;
+  }
+
+  private upload(data: number[]): number {
+    const gl = this.gl;
+    const n = Math.min(data.length, this.scratch.length);
+    for (let i = 0; i < n; i++) this.scratch[i] = data[i];
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.scratch, 0, n);
+    return n;
+  }
+
+  // Caster pass: real pad outline (notch carved) into the bound height mask.
+  // ShadowRenderer.begin() has set MAX-blend / no-depth state.
+  cast(data: number[], width: number, height: number, scroll: number) {
+    const count = data.length / LILYPAD_INST_FLOATS;
+    if (count === 0) return;
+    const gl = this.gl;
+    this.upload(data);
+    gl.useProgram(this.castProg);
+    const mo = maxCastOffset();
+    gl.uniform2f(this.castResLoc, width + mo[0], height + mo[1]);
+    gl.uniform1f(this.castScrollLoc, scroll);
+    gl.uniform1f(this.castHeightLoc, LILYPAD_H);
+    const off = castShadowOffset(LILYPAD_H);
+    gl.uniform2f(this.castOffsetLoc, off[0], off[1]);
+    gl.bindVertexArray(this.castVao);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, this.circleCount, count);
+    gl.bindVertexArray(null);
+  }
+
+  // Visible pass; also receives shadows (lotuses cast onto the pads).
+  draw(
+    data: number[],
+    width: number,
+    height: number,
+    scroll: number,
+    shadowTex: WebGLTexture,
+    fragW: number,
+    fragH: number,
+  ) {
+    const count = data.length / LILYPAD_INST_FLOATS;
+    if (count === 0) return;
+    const gl = this.gl;
+    this.upload(data);
+    gl.useProgram(this.prog);
+    gl.uniform2f(this.resLoc, width, height);
+    gl.uniform1f(this.scrollLoc, scroll);
+    gl.uniform2f(this.sh.fragRes, fragW, fragH);
+    gl.uniform2f(this.sh.sunDir, SHADOW_SUN_DIR[0], SHADOW_SUN_DIR[1]);
+    gl.uniform1f(this.sh.k, SHADOW_K);
+    gl.uniform1f(this.sh.dark, SHADOW_DARKNESS);
+    gl.uniform1f(this.sh.bias, SHADOW_BIAS);
+    gl.uniform1f(this.sh.fade, SHADOW_FADE);
+    gl.uniform1f(this.sh.recv, LILYPAD_H);
+    gl.uniform2f(this.offsetLoc, 0, 0); // visible pad sits at its real position
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, shadowTex);
+    gl.uniform1i(this.sh.tex, 0);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindVertexArray(this.vao);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, this.circleCount, count);
+    gl.bindVertexArray(null);
+    gl.disable(gl.BLEND);
+  }
+
+  dispose() {
+    const gl = this.gl;
+    gl.deleteProgram(this.prog);
+    gl.deleteProgram(this.castProg);
+    gl.deleteVertexArray(this.vao);
+    gl.deleteVertexArray(this.castVao);
+    gl.deleteBuffer(this.circleVbo);
+    gl.deleteBuffer(this.instVbo);
+  }
+}
