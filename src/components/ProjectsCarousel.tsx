@@ -5,10 +5,14 @@ import { FaChevronLeft, FaChevronRight } from "react-icons/fa6";
 import { projects } from "@/content/projects";
 import ProjectCard from "./ProjectCard";
 
+// Auto-advance cadence: one project per this interval.
+const STEP_MS = 4500;
+
 export default function ProjectsCarousel() {
   const ref = useRef<HTMLDivElement | null>(null);
-  const paused = useRef(false);
-  const resumeTimer = useRef<number | null>(null);
+  const autoTimer = useRef<number | null>(null);
+  // Lets the side buttons (defined outside the effect) restart the timer.
+  const resetAuto = useRef<() => void>(() => {});
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
 
@@ -20,47 +24,31 @@ export default function ProjectsCarousel() {
       "(prefers-reduced-motion: reduce)",
     ).matches;
 
-    let raf = 0;
-    const tick = () => {
+    const onScroll = () => {
       const max = el.scrollWidth - el.clientWidth;
-      // Gentle drift; stops at the end (no looping).
-      if (!paused.current && !reduce && el.scrollLeft < max - 1) {
-        el.scrollLeft += 0.4;
-      }
       // setState bails when the boolean is unchanged, so this is cheap.
       setAtStart(el.scrollLeft <= 1);
       setAtEnd(el.scrollLeft >= max - 1);
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
 
-    const pause = () => {
-      paused.current = true;
-      if (resumeTimer.current) window.clearTimeout(resumeTimer.current);
+    // Snap anchor: the scrollport's start edge inset by scroll-padding, i.e.
+    // the content-column left edge a card's left edge should align to.
+    const containerStart = () => {
+      const cs = getComputedStyle(el);
+      const pad =
+        parseFloat(cs.scrollPaddingLeft) || parseFloat(cs.paddingLeft) || 0;
+      return el.getBoundingClientRect().left + pad;
     };
-    const resumeSoon = () => {
-      if (resumeTimer.current) window.clearTimeout(resumeTimer.current);
-      resumeTimer.current = window.setTimeout(() => {
-        paused.current = false;
-      }, 1500);
-    };
-
-    el.addEventListener("pointerenter", pause);
-    el.addEventListener("pointerleave", resumeSoon);
-    el.addEventListener("pointerdown", pause);
-    el.addEventListener("pointerup", resumeSoon);
-
-    const containerCenter = () =>
-      el.getBoundingClientRect().left + el.clientWidth / 2;
 
     const nearestIndex = () => {
-      const c = containerCenter();
+      const s = containerStart();
       let best = Infinity;
       let idx = 0;
       const kids = el.children;
       for (let i = 0; i < kids.length; i++) {
-        const r = kids[i].getBoundingClientRect();
-        const d = Math.abs(r.left + r.width / 2 - c);
+        const d = Math.abs(kids[i].getBoundingClientRect().left - s);
         if (d < best) {
           best = d;
           idx = i;
@@ -69,20 +57,45 @@ export default function ProjectsCarousel() {
       return idx;
     };
 
-    const centerChild = (i: number, smooth: boolean) => {
+    const alignChild = (i: number, smooth: boolean) => {
       const kids = el.children;
       const j = Math.max(0, Math.min(kids.length - 1, i));
       const r = kids[j].getBoundingClientRect();
       el.scrollBy({
-        left: r.left + r.width / 2 - containerCenter(),
+        left: r.left - containerStart(),
         behavior: smooth ? "smooth" : "auto",
       });
     };
 
-    // Pointer drag-to-scroll. Snap is disabled for the whole gesture *and* the
-    // release animation so CSS proximity-snap can't yank the strip back; a JS
-    // target (velocity- and distance-aware) decides the destination pane.
+    // Auto-advance: discrete snap to the next project, then loop back to the
+    // start — identical to pressing the next button on a timer. Any
+    // interaction (drag/wheel/button) restarts the countdown via schedule(),
+    // so it holds on the card you landed on for a full interval.
     let down = false;
+    const advance = () => {
+      if (down) return;
+      const max = el.scrollWidth - el.clientWidth;
+      const next = nearestIndex() + 1;
+      if (next >= el.children.length || el.scrollLeft >= max - 1) {
+        alignChild(0, true);
+      } else {
+        alignChild(next, true);
+      }
+    };
+    const schedule = () => {
+      if (autoTimer.current) window.clearTimeout(autoTimer.current);
+      if (reduce) return;
+      autoTimer.current = window.setTimeout(() => {
+        advance();
+        schedule();
+      }, STEP_MS);
+    };
+    resetAuto.current = schedule;
+    schedule();
+
+    // Pointer drag-to-scroll. CSS scroll-snap is intentionally off; a JS
+    // target (velocity- and distance-aware) decides the destination pane on
+    // release.
     let startX = 0;
     let startLeft = 0;
     let startIdx = 0;
@@ -91,13 +104,13 @@ export default function ProjectsCarousel() {
     let vx = 0;
     const onDown = (e: PointerEvent) => {
       down = true;
+      if (autoTimer.current) window.clearTimeout(autoTimer.current);
       startX = e.clientX;
       startLeft = el.scrollLeft;
       startIdx = nearestIndex();
       lastX = e.clientX;
       lastT = performance.now();
       vx = 0;
-      el.style.scrollSnapType = "none";
     };
     const onMove = (e: PointerEvent) => {
       if (!down) return;
@@ -126,34 +139,34 @@ export default function ProjectsCarousel() {
         const steps = Math.max(1, Math.round(Math.abs(moved) / step));
         target = startIdx + dir * steps;
       }
-      centerChild(target, true);
-
-      // Restore CSS snap only once the settle animation has finished.
-      // scrollend where supported, with a timeout fallback; runs once.
-      let restored = false;
-      const restore = () => {
-        if (restored) return;
-        restored = true;
-        el.style.scrollSnapType = "";
-        el.removeEventListener("scrollend", restore);
-      };
-      el.addEventListener("scrollend", restore);
-      window.setTimeout(restore, 500);
+      alignChild(target, true);
+      schedule(); // hold here for a full interval before auto-advancing
     };
     el.addEventListener("pointerdown", onDown);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
 
+    // Wheel/touchpad horizontal scroll: native scrolling handles the motion;
+    // we snap to the nearest pane once it settles, then restart the timer.
+    let wheelTimer: number | null = null;
+    const onWheel = () => {
+      if (autoTimer.current) window.clearTimeout(autoTimer.current);
+      if (wheelTimer) window.clearTimeout(wheelTimer);
+      wheelTimer = window.setTimeout(() => {
+        alignChild(nearestIndex(), true);
+        schedule();
+      }, 60);
+    };
+    el.addEventListener("wheel", onWheel, { passive: true });
+
     return () => {
-      cancelAnimationFrame(raf);
-      if (resumeTimer.current) window.clearTimeout(resumeTimer.current);
-      el.removeEventListener("pointerenter", pause);
-      el.removeEventListener("pointerleave", resumeSoon);
-      el.removeEventListener("pointerdown", pause);
-      el.removeEventListener("pointerup", resumeSoon);
+      if (autoTimer.current) window.clearTimeout(autoTimer.current);
+      el.removeEventListener("scroll", onScroll);
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      el.removeEventListener("wheel", onWheel);
+      if (wheelTimer) window.clearTimeout(wheelTimer);
     };
   }, []);
 
@@ -161,14 +174,11 @@ export default function ProjectsCarousel() {
   const nudge = (dir: 1 | -1) => {
     const el = ref.current;
     if (!el) return;
-    paused.current = true;
-    if (resumeTimer.current) window.clearTimeout(resumeTimer.current);
-    resumeTimer.current = window.setTimeout(() => {
-      paused.current = false;
-    }, 1500);
+    if (autoTimer.current) window.clearTimeout(autoTimer.current);
     const first = el.firstElementChild as HTMLElement | null;
     const step = first ? first.getBoundingClientRect().width + 20 : 320;
     el.scrollBy({ left: dir * step, behavior: "smooth" });
+    resetAuto.current(); // restart the countdown from this card
   };
 
   const arrowClass =
@@ -197,15 +207,23 @@ export default function ProjectsCarousel() {
       </button>
       <div
         ref={ref}
-        className="no-scrollbar flex touch-pan-x snap-x snap-proximity gap-5 overflow-x-auto overscroll-x-contain px-6"
-        style={{ cursor: "grab" }}
+        className="no-scrollbar flex touch-pan-x gap-5 overflow-x-auto overscroll-x-contain"
+        style={{
+          cursor: "grab",
+          // Bound the first/last card to the site's content column (max-w-3xl
+          // = 48rem, + the 1.5rem heading gutter) so the strip lines up with
+          // the section heading. JS (containerStart) reads this as the snap
+          // anchor. The scroller still spans full width, so mid cards bleed to
+          // the borders and nothing is clipped.
+          paddingInline: "max(1.5rem, calc((100vw - 48rem) / 2 + 1.5rem))",
+        }}
       >
         {projects.map((project) => (
           <div
             key={project.name}
             // Cap height so the 3:4 width never exceeds ~80vw — keeps edge
             // space on narrow/mobile screens (width = height * 3/4).
-            className="aspect-[3/4] h-[min(clamp(20rem,62vh,34rem),106vw)] shrink-0 snap-center select-none"
+            className="aspect-[3/4] h-[min(clamp(20rem,62vh,34rem),106vw)] shrink-0 select-none"
           >
             <ProjectCard project={project} />
           </div>

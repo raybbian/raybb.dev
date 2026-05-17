@@ -13,24 +13,6 @@ export default function Home() {
       <ScrollSpy />
       <Hero />
 
-      <Section id="projects" lead="Here are my" title="Projects." full>
-        <ProjectsCarousel />
-      </Section>
-
-      <Section id="experience" lead="This is my" title="Experience.">
-        <div className="flex flex-col gap-5">
-          {experience.map((e) => (
-            <Entry
-              key={e.company}
-              title={e.company}
-              meta={e.period}
-              titleAccent={`${e.role} · `}
-              description={e.description}
-            />
-          ))}
-        </div>
-      </Section>
-
       <Section id="about" lead="This is" title="who I am.">
         <div className="flex flex-col gap-5">
           {about.map((a) => (
@@ -43,6 +25,24 @@ export default function Home() {
           <div className="mt-4">
             <SocialLinks />
           </div>
+        </div>
+      </Section>
+
+      <Section id="projects" lead="Here are my" title="Projects." full>
+        <ProjectsCarousel />
+      </Section>
+
+      <Section id="experience" lead="This is my" title="Experience.">
+        <div className="flex flex-col gap-5">
+          {experience.map((e) => (
+            <Entry
+              key={e.company}
+              title={e.company}
+              subtitle={e.role}
+              meta={e.period}
+              description={e.description}
+            />
+          ))}
         </div>
       </Section>
     </main>

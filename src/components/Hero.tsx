@@ -6,7 +6,7 @@ export default function Hero() {
       id="home"
       className="flex min-h-screen snap-start flex-col items-center justify-center px-6 text-center"
     >
-      <h1 className="text-5xl font-bold tracking-tight text-white [text-shadow:0_3px_14px_rgba(0,0,0,0.5)] sm:text-7xl">
+      <h1 className="text-5xl font-bold tracking-tight text-white [filter:drop-shadow(0_3px_14px_rgba(0,0,0,0.5))] sm:text-7xl">
         <span className="hero-word inline-block" style={{ animationDelay: "0ms" }}>
           {profile.greeting}
         </span>{" "}

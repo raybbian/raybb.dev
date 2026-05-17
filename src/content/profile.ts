@@ -15,7 +15,7 @@ export const profile = {
 
 export const sections = [
   { id: "home", label: "Home" },
+  { id: "about", label: "About" },
   { id: "projects", label: "Projects" },
   { id: "experience", label: "Experience" },
-  { id: "about", label: "About" },
 ] as const;

@@ -1,3 +1,5 @@
+import { RENDER_MSAA } from "@/render/frame";
+
 // The mask is a normalized HEIGHT field: each caster renders its REAL geometry
 // bottom-to-top with no blend, so where casters overlap the topmost wins. A
 // receiver at height `recvH` is shadowed by anything taller; the gap
@@ -54,8 +56,6 @@ export function maxCastOffset(): [number, number] {
   return castShadowOffset(1.0);
 }
 
-const MAX_MSAA = 4; // matches WaterRenderer
-
 // Owns the RG8 premultiplied (height, coverage) mask. Between begin() and
 // end() the lilypad/lotus/fish renderers rasterize their real geometry
 // bottom-to-top with no blend (topmost caster wins per texel). end() resolves
@@ -77,7 +77,7 @@ export class ShadowRenderer {
     this.gl = gl;
     this.samples = Math.min(
       gl.getParameter(gl.MAX_SAMPLES) as number,
-      MAX_MSAA,
+      RENDER_MSAA,
     );
     this.msaaFbo = gl.createFramebuffer()!;
     this.colorRb = gl.createRenderbuffer()!;

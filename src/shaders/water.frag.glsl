@@ -12,6 +12,7 @@ uniform vec4 u_ripples[MAX_RIPPLES];      // cx, cy, radius, rot (px / rad)
 uniform float u_rippleNotch[MAX_RIPPLES]; // V-notch half-angle, rad
 uniform float u_rippleAmp[MAX_RIPPLES];   // 0..1 strength (1 = pads/lotuses)
 uniform float u_rippleFoam[MAX_RIPPLES];  // 1 = static collar, 0 = ring only
+uniform float u_rippleSeed[MAX_RIPPLES];  // stable per-source noise id
 uniform sampler2D u_fishDepth;      // R = fish submergence, 0 = open water
 #include "shadow.glsl"
 out vec4 o;
@@ -119,7 +120,9 @@ void main() {
     vec2 d = px - u_ripples[i].xy;
     float dist = length(d);
     vec2 nd = d / max(dist, 1e-3);
-    float seed = float(i) * 5.123;
+    // Per-SOURCE (not per-slot): the emission array reorders as bands stream,
+    // so an index-based seed would teleport a pad's foam/crest pattern.
+    float seed = u_rippleSeed[i];
     float amp = u_rippleAmp[i]; // splashes fade out; pads/lotuses stay at 1
     float radius = u_ripples[i].z;
     // Conservative cull: the true outline is never closer than the bare disk.

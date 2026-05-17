@@ -5,6 +5,27 @@ export interface Vec2 {
 
 export const TWO_PI = Math.PI * 2;
 
+// Seeded PRNG: deterministic [0,1) stream from a 32-bit seed.
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Mixes two ints into a stable uint32 (same mixing family as mulberry32).
+// Used to derive a per-cell seed: mulberry32(hash2(seed, cellIndex)).
+export function hash2(seed: number, n: number): number {
+  let h = (seed >>> 0) ^ Math.imul(n >>> 0, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
 export const CLICK_ATTACK = 0.12; // s to pop up to peak while pressed
 export const CLICK_RELEASE = 0.5; // s to spring back after release
 export const CLICK_PEAK = 0.22; // additive scale delta at full size

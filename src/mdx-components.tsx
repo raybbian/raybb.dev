@@ -13,6 +13,7 @@ import {
   Pre,
   Hr,
 } from "@/components/prose";
+import { Video } from "@/components/Video";
 
 const components: MDXComponents = {
   h1: H1,
@@ -27,6 +28,7 @@ const components: MDXComponents = {
   code: Code,
   pre: Pre,
   hr: Hr,
+  Video,
 };
 
 export function useMDXComponents(): MDXComponents {

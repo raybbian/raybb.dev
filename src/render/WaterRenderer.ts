@@ -1,5 +1,5 @@
 import { createProgram } from "@/lib/gl";
-import { BG } from "@/render/frame";
+import { BG, RENDER_MSAA } from "@/render/frame";
 import {
   SHADOW_BIAS,
   SHADOW_DARKNESS,
@@ -12,11 +12,13 @@ import VS from "@/shaders/water.vert.glsl";
 import FS from "@/shaders/water.frag.glsl";
 import REFRACT_FS from "@/shaders/refract.frag.glsl";
 
-// Upper bound for the shader's ripple-source uniform array. Must stay in
-// lockstep with the GLSL `#define` injected below. Budget per frame:
-// <=18 pads + 9 lotuses + <=24 click rings + <=12 treat splashes = <=63.
-export const MAX_RIPPLES = 64;
-const MAX_MSAA = 4;
+// Upper bound for the shader's ripple-source uniform array (the GLSL `#define`
+// below is injected from this, so it's the single source of truth). Per-frame
+// cost is bounded by the actual u_rippleCount, not this cap, so emission is
+// clipped to the visible band (FishBackground / Lotuses.emitRipples) to keep
+// it low. Headroom budget: on-screen pads + lotuses (viewport-proportional at
+// the streamed density) + <=24 click rings + <=12 treat splashes.
+export const MAX_RIPPLES = 96;
 
 // Surface features (lilypads, lotuses, treats, ...) feed the ripple stream by
 // writing tuples straight into the renderer's uniform scratch.
@@ -31,6 +33,10 @@ export interface RippleSink {
     // false = travelling ring only (dynamic splashes/click rings). true =
     // also pin the static foam collar (steady pad/lotus rims).
     foam: boolean,
+    // Stable per-source identity for the noise pattern. MUST NOT depend on the
+    // emission slot/order (sources stream + reorder), or the foam/crest
+    // pattern teleports as the array index shifts with scroll.
+    seed: number,
   ): void;
 }
 const REFRACT_SHIFT = 2; // ambient refraction baked at 1/4 res (low-freq)
@@ -56,8 +62,14 @@ export class WaterRenderer {
   private depthResolveFbo: WebGLFramebuffer;
   private fishDepthTex: WebGLTexture;
   private samples: number;
+  // Internal render size (drawing-buffer px * renderScale). The final water
+  // pass renders here and is upscaled to the default framebuffer in present().
   private w = 0;
   private h = 0;
+  // Single-sample target the composited water lands in before the upscale
+  // blit; lets the heavy ripple ALU run at the scaled resolution.
+  private outFbo: WebGLFramebuffer;
+  private outTex: WebGLTexture;
 
   private refractProg: WebGLProgram;
   private refractFbo: WebGLFramebuffer;
@@ -72,6 +84,7 @@ export class WaterRenderer {
   private notchScratch = new Float32Array(MAX_RIPPLES);
   private ampScratch = new Float32Array(MAX_RIPPLES);
   private foamScratch = new Float32Array(MAX_RIPPLES); // 1 = collar, 0 = off
+  private seedScratch = new Float32Array(MAX_RIPPLES); // stable per-source id
   private rippleCount = 0;
 
   private uScene: WebGLUniformLocation;
@@ -84,6 +97,7 @@ export class WaterRenderer {
   private uRippleNotch: WebGLUniformLocation;
   private uRippleAmp: WebGLUniformLocation;
   private uRippleFoam: WebGLUniformLocation;
+  private uRippleSeed: WebGLUniformLocation;
   private uFishDepth: WebGLUniformLocation;
   private uShadow: WebGLUniformLocation;
   private uShadowDark: WebGLUniformLocation;
@@ -97,7 +111,10 @@ export class WaterRenderer {
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
     this.prog = createProgram(gl, VS, FS_SRC);
-    this.samples = Math.min(gl.getParameter(gl.MAX_SAMPLES) as number, MAX_MSAA);
+    this.samples = Math.min(
+      gl.getParameter(gl.MAX_SAMPLES) as number,
+      RENDER_MSAA,
+    );
 
     const u = (n: string) => gl.getUniformLocation(this.prog, n)!;
     this.uScene = u("u_scene");
@@ -110,6 +127,7 @@ export class WaterRenderer {
     this.uRippleNotch = u("u_rippleNotch");
     this.uRippleAmp = u("u_rippleAmp");
     this.uRippleFoam = u("u_rippleFoam");
+    this.uRippleSeed = u("u_rippleSeed");
     this.uFishDepth = u("u_fishDepth");
     this.uShadow = u("u_shadow");
     this.uShadowDark = u("u_shadowDark");
@@ -134,6 +152,8 @@ export class WaterRenderer {
     this.depthRb = gl.createRenderbuffer()!;
     this.depthResolveFbo = gl.createFramebuffer()!;
     this.fishDepthTex = gl.createTexture()!;
+    this.outFbo = gl.createFramebuffer()!;
+    this.outTex = gl.createTexture()!;
   }
 
   beginRipples(): void {
@@ -150,6 +170,7 @@ export class WaterRenderer {
     notch: number,
     amp: number,
     foam: boolean,
+    seed: number,
   ): void {
     const i = this.rippleCount;
     if (i >= MAX_RIPPLES) return;
@@ -160,6 +181,7 @@ export class WaterRenderer {
     this.notchScratch[i] = notch;
     this.ampScratch[i] = amp;
     this.foamScratch[i] = foam ? 1 : 0;
+    this.seedScratch[i] = seed;
     this.rippleCount = i + 1;
   }
 
@@ -246,6 +268,21 @@ export class WaterRenderer {
       gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.refractTex, 0,
     );
 
+    // Composite output at the internal (scaled) size; LINEAR so present()'s
+    // upscale blit to the full-res default framebuffer reads smoothly.
+    gl.bindTexture(gl.TEXTURE_2D, this.outTex);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.outFbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.outTex, 0,
+    );
+
     if (
       gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE
     ) {
@@ -294,7 +331,9 @@ export class WaterRenderer {
     gl.uniform1f(this.uRefractTime, time);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Composite into the scaled output target (not the screen): the ripple
+    // ALU then costs ~renderScale^2 of full-res. present() upscales it.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.outFbo);
     gl.viewport(0, 0, this.w, this.h);
     gl.useProgram(this.prog);
 
@@ -326,10 +365,27 @@ export class WaterRenderer {
     gl.uniform1fv(this.uRippleNotch, this.notchScratch);
     gl.uniform1fv(this.uRippleAmp, this.ampScratch);
     gl.uniform1fv(this.uRippleFoam, this.foamScratch);
+    gl.uniform1fv(this.uRippleSeed, this.seedScratch);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0); // leave default unit active for others
+  }
+
+  // Upscales the scaled composite to the full-res default framebuffer and
+  // leaves it bound at the full viewport so the crisp top layer (lilypads,
+  // lotuses) draws over it at native resolution. `fullW`/`fullH` are
+  // drawing-buffer px.
+  present(fullW: number, fullH: number) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.outFbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.blitFramebuffer(
+      0, 0, this.w, this.h, 0, 0, fullW, fullH,
+      gl.COLOR_BUFFER_BIT, gl.LINEAR,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, fullW, fullH);
   }
 
   dispose() {
@@ -346,5 +402,7 @@ export class WaterRenderer {
     gl.deleteTexture(this.sceneTex);
     gl.deleteTexture(this.refractTex);
     gl.deleteTexture(this.fishDepthTex);
+    gl.deleteFramebuffer(this.outFbo);
+    gl.deleteTexture(this.outTex);
   }
 }

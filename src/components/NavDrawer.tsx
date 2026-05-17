@@ -12,7 +12,7 @@ const hashSection = () =>
 
 export default function NavDrawer() {
   const [open, setOpen] = useState(false);
-  const [section, setSection] = useState(hashSection);
+  const [section, setSection] = useState("home");
   const pathname = usePathname();
   const router = useRouter();
 
@@ -25,6 +25,7 @@ export default function NavDrawer() {
     const onSection = (e: Event) =>
       setSection((e as CustomEvent<string>).detail);
     const onHash = () => setSection(hashSection());
+    onHash(); // sync to the real hash now that we're past hydration
     window.addEventListener("keydown", onKey);
     window.addEventListener("koi:section", onSection);
     window.addEventListener("hashchange", onHash);

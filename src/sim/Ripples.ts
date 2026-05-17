@@ -44,7 +44,16 @@ export class Ripples {
         p < RIPPLE_PEAK
           ? p / RIPPLE_PEAK
           : 1 - (p - RIPPLE_PEAK) / (1 - RIPPLE_PEAK);
-      sink.addRipple(ring.x, ring.y - scroll, r, 0, 0, Math.max(0, amp), false);
+      sink.addRipple(
+        ring.x,
+        ring.y - scroll,
+        r,
+        0,
+        0,
+        Math.max(0, amp),
+        false,
+        ring.x + ring.y, // stable per-ring (spawn pos is constant)
+      );
     }
   }
 }

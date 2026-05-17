@@ -1,5 +1,11 @@
 import { hslToRgb } from "@/sim/koiPattern";
-import { CLICK_ATTACK, CLICK_RELEASE, clickScale } from "@/lib/math";
+import {
+  CLICK_ATTACK,
+  CLICK_RELEASE,
+  clickScale,
+  mulberry32,
+  hash2,
+} from "@/lib/math";
 import type { PokeHit } from "@/sim/Lilypads";
 import type { RippleSink } from "@/render/WaterRenderer";
 
@@ -64,118 +70,187 @@ const LOTUS_GAP = 10; // min clear water between lotus footprints, px
 // instead of leaving a ring of clean water around them.
 const RIPPLE_RADIUS_FRAC = 0.6;
 
+// The pond is infinite in Y; world-Y is partitioned into fixed bands whose
+// blooms are a pure function of (seed, band index). Independent seed stream
+// from the lilypads so the two fields don't visually correlate.
+const BAND_H = 900; // world px per band
+const BAND_MARGIN = 2; // bands kept beyond the visible window each side
+const BAND_SEED_SALT = 0x4c4f5455; // "LOTU" — decorrelates from pad bands
+// Per-band bloom count, drawn FIRST from the band RNG. Mean ~3 (1.5x the old
+// 9 blooms / ~3680px scene).
+const BAND_LOTUS_MIN = 2;
+const BAND_LOTUS_SPAN = 3; // count = MIN + (rng()*SPAN | 0) -> [2,4]
+
+// Places one band's blooms; Y lands in [bandTop, bandTop+bandH]. Rejection is
+// band-local (bands are independent by design). Lilypads are ignored by
+// design — a lotus may sit over and draw on one.
+function placeBandLotuses(
+  rng: () => number,
+  count: number,
+  width: number,
+  bandTop: number,
+  bandH: number,
+  screenScale: number,
+): Lotus[] {
+  const lotuses: Lotus[] = [];
+  const lerp = (lo: number, hi: number) => lo + rng() * (hi - lo);
+  const range = ([lo, hi]: [number, number]) => lerp(lo, hi);
+  for (let i = 0; i < count; i++) {
+    // Reject candidates whose footprint (peak bob) touches a placed lotus.
+    for (let attempt = 0; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
+      const edge = rng() < 0.5 ? -1 : 1;
+      const hx = width * (PLACE_CENTER + edge * range(PLACE_X_OFFSET));
+      const hy = bandTop + range(PLACE_Y) * bandH;
+      const size = range(SIZE) * screenScale;
+      const bobAmp = range(BOB_AMP);
+      const ringCount = Math.round(range(RING_COUNT));
+      // Footprint = outermost ring's petal tip; depends on ringCount.
+      const maxInner = INNER_START + RING_STEP * (ringCount - 1);
+      const reach = size * (maxInner + LEN_FRAC[1]) * (1 + bobAmp);
+      const clear = lotuses.every((q) => {
+        const dx = q.hx - hx;
+        const dy = q.hy - hy;
+        return Math.hypot(dx, dy) >= reach + q.reach + LOTUS_GAP * screenScale;
+      });
+      if (!clear) continue;
+
+      const baseAngle = rng() * TAU;
+      const hueJitter = range(HUE_JITTER);
+      // Emit rings outermost -> innermost: with alpha blending and no depth
+      // test, paint order is draw order, so inner rings end up on top.
+      const petals: Petal[] = [];
+      for (let j = ringCount - 1; j >= 0; j--) {
+        const fr = ringCount === 1 ? 0 : j / (ringCount - 1);
+        const inner = size * (INNER_START + RING_STEP * j);
+        const len = size * (LEN_FRAC[0] + (LEN_FRAC[1] - LEN_FRAC[0]) * fr);
+        const half =
+          size * (HALF_FRAC[0] + (HALF_FRAC[1] - HALF_FRAC[0]) * fr);
+        const ringPetals = Math.round(
+          PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr,
+        );
+        const sat = CENTER_SL[0] + (EDGE_SL[0] - CENTER_SL[0]) * fr;
+        const light = CENTER_SL[1] + (EDGE_SL[1] - CENTER_SL[1]) * fr;
+        const c = hslToRgb(PINK_HUE + hueJitter, sat, light);
+        const rgb: [number, number, number] = [c[0], c[1], c[2]];
+        // Offset alternate rings by half a step so petals nest into the gaps
+        // of the ring beneath.
+        const ringOffset = baseAngle + (j % 2) * (Math.PI / ringPetals);
+        for (let k = 0; k < ringPetals; k++) {
+          petals.push({
+            baseAngle: ringOffset + (k / ringPetals) * TAU,
+            inner,
+            len,
+            half,
+            rgb,
+            flutterP: rng() * TAU,
+          });
+        }
+      }
+
+      lotuses.push({
+        hx,
+        hy,
+        petals,
+        reach,
+        swayAmp: range(SWAY_AMP),
+        swayW: range(SWAY_W),
+        swayP: rng() * TAU,
+        bobAmp,
+        bobW: range(BOB_W),
+        bobP: rng() * TAU,
+        clickT: Infinity,
+        held: false,
+      });
+      break;
+    }
+  }
+  return lotuses;
+}
+
+interface Band {
+  lotuses: Lotus[];
+  lastSeen: number; // frame counter; off-window bands are evicted
+}
+
 export class Lotuses {
-  private lotuses: Lotus[] = [];
+  private bands = new Map<number, Band>();
   private t = 0;
-  private scratch: Float32Array;
-  private petalTotal = 0;
+  private scratch = new Float32Array(0); // grow-only, sim-owned
+  private frame = 0;
 
   constructor(
-    rng: () => number,
-    count: number,
-    width: number,
-    height: number,
-    screenScale = 1,
-  ) {
-    const lerp = (lo: number, hi: number) => lo + rng() * (hi - lo);
-    const range = ([lo, hi]: [number, number]) => lerp(lo, hi);
-    for (let i = 0; i < count; i++) {
-      // Reject candidates whose footprint (peak bob) touches a placed lotus.
-      // Lilypads are ignored by design — a lotus may sit over and draw on one.
-      for (let attempt = 0; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
-        const edge = rng() < 0.5 ? -1 : 1;
-        const hx = width * (PLACE_CENTER + edge * range(PLACE_X_OFFSET));
-        const hy = range(PLACE_Y) * height;
-        const size = range(SIZE) * screenScale;
-        const bobAmp = range(BOB_AMP);
-        const ringCount = Math.round(range(RING_COUNT));
-        // Footprint = outermost ring's petal tip; depends on ringCount.
-        const maxInner = INNER_START + RING_STEP * (ringCount - 1);
-        const reach = size * (maxInner + LEN_FRAC[1]) * (1 + bobAmp);
-        const clear = this.lotuses.every((q) => {
-          const dx = q.hx - hx;
-          const dy = q.hy - hy;
-          return Math.hypot(dx, dy) >= reach + q.reach + LOTUS_GAP * screenScale;
-        });
-        if (!clear) continue;
+    private seed: number,
+    private width: number,
+    private screenScale: number,
+  ) {}
 
-        const baseAngle = rng() * TAU;
-        const hueJitter = range(HUE_JITTER);
-        // Emit rings outermost -> innermost: with alpha blending and no depth
-        // test, paint order is draw order, so inner rings end up on top.
-        const petals: Petal[] = [];
-        for (let j = ringCount - 1; j >= 0; j--) {
-          const fr = ringCount === 1 ? 0 : j / (ringCount - 1);
-          const inner = size * (INNER_START + RING_STEP * j);
-          const len =
-            size * (LEN_FRAC[0] + (LEN_FRAC[1] - LEN_FRAC[0]) * fr);
-          const half =
-            size * (HALF_FRAC[0] + (HALF_FRAC[1] - HALF_FRAC[0]) * fr);
-          const ringPetals = Math.round(
-            PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr,
-          );
-          const sat = CENTER_SL[0] + (EDGE_SL[0] - CENTER_SL[0]) * fr;
-          const light = CENTER_SL[1] + (EDGE_SL[1] - CENTER_SL[1]) * fr;
-          const c = hslToRgb(PINK_HUE + hueJitter, sat, light);
-          const rgb: [number, number, number] = [c[0], c[1], c[2]];
-          // Offset alternate rings by half a step so petals nest into the
-          // gaps of the ring beneath.
-          const ringOffset =
-            baseAngle + (j % 2) * (Math.PI / ringPetals);
-          for (let k = 0; k < ringPetals; k++) {
-            petals.push({
-              baseAngle: ringOffset + (k / ringPetals) * TAU,
-              inner,
-              len,
-              half,
-              rgb,
-              flutterP: rng() * TAU,
-            });
-          }
-        }
+  // Viewport width/scale truly changed: drop the cache so bands regenerate at
+  // the new metrics (deterministic — the same metrics reproduce the field).
+  reconfigure(width: number, screenScale: number): void {
+    this.width = width;
+    this.screenScale = screenScale;
+    this.bands.clear();
+  }
 
-        this.lotuses.push({
-          hx,
-          hy,
-          petals,
-          reach,
-          swayAmp: range(SWAY_AMP),
-          swayW: range(SWAY_W),
-          swayP: rng() * TAU,
-          bobAmp,
-          bobW: range(BOB_W),
-          bobP: rng() * TAU,
-          clickT: Infinity,
-          held: false,
-        });
-        this.petalTotal += petals.length;
-        break;
+  // Ensure bands covering [worldY, worldY+innerH] (± margin) exist; evict
+  // off-window bands unless one still holds a poked/animating bloom. Call once
+  // per frame before resolve/buildInstances.
+  update(worldY: number, innerH: number): void {
+    this.frame++;
+    const lo = Math.max(0, Math.floor(worldY / BAND_H) - BAND_MARGIN);
+    const hi = Math.floor((worldY + innerH) / BAND_H) + BAND_MARGIN;
+    for (let b = lo; b <= hi; b++) {
+      const band = this.bands.get(b);
+      if (band) {
+        band.lastSeen = this.frame;
+        continue;
       }
+      const r = mulberry32(hash2(this.seed ^ BAND_SEED_SALT, b));
+      const count = BAND_LOTUS_MIN + ((r() * BAND_LOTUS_SPAN) | 0);
+      this.bands.set(b, {
+        lotuses: placeBandLotuses(
+          r,
+          count,
+          this.width,
+          b * BAND_H,
+          BAND_H,
+          this.screenScale,
+        ),
+        lastSeen: this.frame,
+      });
     }
-    this.scratch = new Float32Array(this.petalTotal * LOTUS_INST_FLOATS);
+    for (const [b, band] of this.bands) {
+      if (band.lastSeen === this.frame) continue;
+      const busy = band.lotuses.some(
+        (L) => L.held || L.clickT < CLICK_RELEASE,
+      );
+      if (!busy) this.bands.delete(b);
+    }
   }
 
   resolve(dt: number): void {
     this.t += dt;
-    for (const L of this.lotuses) {
-      if (L.held) L.clickT = Math.min(L.clickT + dt, CLICK_ATTACK);
-      else if (L.clickT < CLICK_RELEASE) {
-        L.clickT += dt;
-        if (L.clickT >= CLICK_RELEASE) L.clickT = Infinity;
+    for (const band of this.bands.values())
+      for (const L of band.lotuses) {
+        if (L.held) L.clickT = Math.min(L.clickT + dt, CLICK_ATTACK);
+        else if (L.clickT < CLICK_RELEASE) {
+          L.clickT += dt;
+          if (L.clickT >= CLICK_RELEASE) L.clickT = Infinity;
+        }
       }
-    }
   }
 
   // Pointer released: any held bloom springs back from its peak size.
   release(): void {
-    for (const L of this.lotuses)
-      if (L.held) {
-        L.held = false;
-        L.clickT = 0;
-      }
+    for (const band of this.bands.values())
+      for (const L of band.lotuses)
+        if (L.held) {
+          L.held = false;
+          L.clickT = 0;
+        }
   }
 
-  // x,y in scene space (same frame as hx/hy). Pokes the nearest bloom under
+  // x,y in world space (same frame as hx/hy). Pokes the nearest bloom under
   // the point: holds it at peak size until release() and returns its live
   // pose (centre + the footprint radius its steady ripple uses), or null.
   poke(x: number, y: number): PokeHit | null {
@@ -183,15 +258,16 @@ export class Lotuses {
     let best: Lotus | null = null;
     let bestD = Infinity;
     let br = 0;
-    for (const L of this.lotuses) {
-      const scale = 1 + L.bobAmp * Math.sin(t * L.bobW + L.bobP);
-      const d = Math.hypot(x - L.hx, y - L.hy);
-      if (d <= L.reach * scale && d < bestD) {
-        best = L;
-        bestD = d;
-        br = L.reach * scale * RIPPLE_RADIUS_FRAC;
+    for (const band of this.bands.values())
+      for (const L of band.lotuses) {
+        const scale = 1 + L.bobAmp * Math.sin(t * L.bobW + L.bobP);
+        const d = Math.hypot(x - L.hx, y - L.hy);
+        if (d <= L.reach * scale && d < bestD) {
+          best = L;
+          bestD = d;
+          br = L.reach * scale * RIPPLE_RADIUS_FRAC;
+        }
       }
-    }
     if (!best) return null;
     best.clickT = 0;
     best.held = true;
@@ -199,41 +275,51 @@ export class Lotuses {
   }
 
   buildInstances(): { data: Float32Array; count: number } {
+    let count = 0;
+    for (const band of this.bands.values())
+      for (const L of band.lotuses) count += L.petals.length;
+    const need = count * LOTUS_INST_FLOATS;
+    if (need > this.scratch.length)
+      this.scratch = new Float32Array(Math.ceil(need * 1.5));
     const t = this.t;
     const out = this.scratch;
     let o = 0;
-    for (const L of this.lotuses) {
-      const sway = L.swayAmp * Math.sin(t * L.swayW + L.swayP);
-      const scale =
-        (1 + L.bobAmp * Math.sin(t * L.bobW + L.bobP)) *
-        (1 + clickScale(L.clickT, L.held));
-      for (const p of L.petals) {
-        const flutter = FLUTTER_AMP * Math.sin(t * FLUTTER_W + p.flutterP);
-        out[o++] = L.hx;
-        out[o++] = L.hy;
-        out[o++] = p.baseAngle + sway + flutter;
-        out[o++] = p.len * scale;
-        out[o++] = p.half * scale;
-        out[o++] = p.inner * scale;
-        out[o++] = p.rgb[0];
-        out[o++] = p.rgb[1];
-        out[o++] = p.rgb[2];
-        out[o++] = p.flutterP;
+    for (const band of this.bands.values())
+      for (const L of band.lotuses) {
+        const sway = L.swayAmp * Math.sin(t * L.swayW + L.swayP);
+        const scale =
+          (1 + L.bobAmp * Math.sin(t * L.bobW + L.bobP)) *
+          (1 + clickScale(L.clickT, L.held));
+        for (const p of L.petals) {
+          const flutter = FLUTTER_AMP * Math.sin(t * FLUTTER_W + p.flutterP);
+          out[o++] = L.hx;
+          out[o++] = L.hy;
+          out[o++] = p.baseAngle + sway + flutter;
+          out[o++] = p.len * scale;
+          out[o++] = p.half * scale;
+          out[o++] = p.inner * scale;
+          out[o++] = p.rgb[0];
+          out[o++] = p.rgb[1];
+          out[o++] = p.rgb[2];
+          out[o++] = p.flutterP;
+        }
       }
-    }
-    return { data: out, count: this.petalTotal };
+    return { data: out, count };
   }
 
   // notch=0 makes the shader's sdRippleSource collapse to a plain disk so the
-  // rings stay concentric. `scroll` lifts scene -> screen space.
-  emitRipples(sink: RippleSink, scroll: number): void {
+  // rings stay concentric. `worldY` lifts world -> screen space; blooms whose
+  // rim falls outside [0, height] are skipped so off-screen margin bands don't
+  // consume the renderer's ripple cap.
+  emitRipples(sink: RippleSink, worldY: number, height: number): void {
     const t = this.t;
-    for (const L of this.lotuses) {
-      const scale = 1 + L.bobAmp * Math.sin(t * L.bobW + L.bobP);
-      sink.addRipple(
-        L.hx, L.hy - scroll, L.reach * scale * RIPPLE_RADIUS_FRAC,
-        0, 0, 1, true,
-      );
-    }
+    for (const band of this.bands.values())
+      for (const L of band.lotuses) {
+        const scale = 1 + L.bobAmp * Math.sin(t * L.bobW + L.bobP);
+        const r = L.reach * scale * RIPPLE_RADIUS_FRAC;
+        const cy = L.hy - worldY;
+        if (cy + r < 0 || cy - r > height) continue;
+        sink.addRipple(L.hx, cy, r, 0, 0, 1, true, L.swayP);
+      }
   }
 }

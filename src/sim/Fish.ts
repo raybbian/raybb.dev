@@ -15,7 +15,7 @@ import {
 } from "@/lib/math";
 import { triangulateInto } from "@/lib/triangulate";
 import type { Rgba } from "./koiPattern";
-import { mulberry32 } from "./koiPattern";
+import { mulberry32 } from "@/lib/math";
 import { noise1 } from "./noise";
 import { Chain } from "./Chain";
 
@@ -72,6 +72,12 @@ const CAUDAL_WIDTH_GAIN = 6; // inner spread vs head->tail bend
 const CAUDAL_WIDTH_CLAMP = 13; // inner spread clamp (+/-)
 
 const DORSAL_CTRL_DIST = 16; // bezier control-arm length vs body bend
+// The DRAWN dorsal only flares with body bend (its control arms ~ headToMid,
+// which -> 0 when swimming straight), but a real fin stands upright regardless
+// of heading. The self-shadow floors its fin-height proxy with this intrinsic
+// arch (0 at the spine ends so the band stays on the body, peak mid-spine) so
+// a straight fish still casts a wide, curved-outward band, not a sliver.
+const DORSAL_FIN_HEIGHT = 14; // world px per unit scale, peak mid-spine
 
 const HALF_PI = Math.PI / 2; // body flank + ventral + eye side angle
 const PECTORAL_ANGLE = Math.PI / 3;
@@ -193,6 +199,7 @@ export class Fish {
   private ventralW: number;
   private ventralH: number;
   private dorsalCtrlDist: number;
+  private dorsalFinHeight: number;
   private caudalAmp: number;
   private caudalWidthGain: number;
   private caudalWidthClamp: number;
@@ -284,6 +291,7 @@ export class Fish {
     this.ventralW = VENTRAL_W * scale;
     this.ventralH = VENTRAL_H * scale;
     this.dorsalCtrlDist = DORSAL_CTRL_DIST * scale;
+    this.dorsalFinHeight = DORSAL_FIN_HEIGHT * scale;
     this.caudalAmp = CAUDAL_AMP * scale;
     this.caudalWidthGain = CAUDAL_WIDTH_GAIN * scale;
     this.caudalWidthClamp = CAUDAL_WIDTH_CLAMP * scale;
@@ -336,6 +344,7 @@ export class Fish {
     treats: Vec2[],
     width: number,
     height: number,
+    worldY: number,
   ): void {
     this.t += dt;
     if (this.satedTimer > 0) this.satedTimer -= dt;
@@ -359,10 +368,12 @@ export class Fish {
       const t = 1 - Math.max(0, gap) / this.containInset; // 0 at inset, 1 at edge
       return t * t * CONTAIN_GAIN;
     };
-    dx += edgePush(head.x); // left edge  -> push right
-    dx -= edgePush(width - head.x); // right edge -> push left
-    dy += edgePush(head.y); // top edge   -> push down
-    dy -= edgePush(height - head.y); // bottom edge -> push up
+    // The vertical edges track the visible window [worldY, worldY+height], so
+    // as the camera scrolls the fish migrate to stay on screen.
+    dx += edgePush(head.x); // left edge   -> push right
+    dx -= edgePush(width - head.x); // right edge  -> push left
+    dy += edgePush(head.y - worldY); // top edge    -> push down
+    dy -= edgePush(worldY + height - head.y); // bottom edge -> push up
 
     // `prox` in [0,1] = pointer closeness; also drives speed-up/turn below.
     let prox = 0;
@@ -742,7 +753,12 @@ export class Fish {
         const d2 = dx * dx + dy * dy;
         if (d2 < h2) h2 = d2;
       }
-      const h = Math.sqrt(h2) * DORSAL_SHADOW_SCALE;
+      // Floor the drawn-fin gap with the intrinsic upright arch (see
+      // DORSAL_FIN_HEIGHT) so a straight fish still casts a curved-outward
+      // band; a turning fish keeps the larger drawn width.
+      const t = baseEnd > 1 ? i / (baseEnd - 1) : 0;
+      const intrinsic = this.dorsalFinHeight * Math.sin(Math.PI * t);
+      const h = Math.max(Math.sqrt(h2), intrinsic) * DORSAL_SHADOW_SCALE;
       // near edge = the fin base on the spine (offset 0).
       const np = poolAt(band, bwn);
       np.x = b.x;

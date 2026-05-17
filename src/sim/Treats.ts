@@ -77,7 +77,16 @@ export class Treats {
         p < RIPPLE_PEAK
           ? p / RIPPLE_PEAK
           : 1 - (p - RIPPLE_PEAK) / (1 - RIPPLE_PEAK);
-      sink.addRipple(it.x, it.y - scroll, r, 0, 0, Math.max(0, amp), false);
+      sink.addRipple(
+        it.x,
+        it.y - scroll,
+        r,
+        0,
+        0,
+        Math.max(0, amp),
+        false,
+        it.x, // stable per-treat (x is fixed while it sinks)
+      );
     }
   }
 

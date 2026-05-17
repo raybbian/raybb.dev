@@ -7,7 +7,7 @@ import { TREAT_INST_FLOATS } from "@/sim/Treats";
 import VS from "@/shaders/treat.vert.glsl";
 import FS from "@/shaders/treat.frag.glsl";
 
-const CIRCLE_SEG = 32; // morsels are tiny — a coarse fan is plenty
+const CIRCLE_SEG = 32;
 
 // Must draw into the scene MRT before the water composite so the depth
 // attachment + water pass tint each treat bluer as it sinks (like fish bodies).
