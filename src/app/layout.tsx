@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Raymond Bian",
   description:
-    "Raymond Bian — CS & Math @ Georgia Tech. Projects, experience, and a procedurally animated koi pond.",
+    "Welcome to my personal website!",
 };
 
 export default function RootLayout({

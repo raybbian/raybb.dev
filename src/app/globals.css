@@ -18,6 +18,21 @@
     border-color 250ms ease;
 }
 
+/* Full-bleed background canvas. iOS Safari's `fixed; inset: 0` resolves to the
+   *small* viewport (toolbars expanded); when bars collapse on scroll the visible
+   area outgrows it and a gap opens at the bottom. Pin to the *large* viewport
+   instead so it always spans behind the bars. `100vh` is already the large
+   viewport on iOS (the classic "100vh is too tall" behavior) and is the
+   fallback for browsers without `lvh`. */
+@utility pond-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100lvh;
+}
+
 /* Stronger blur for full-height panels like the side drawer. */
 @utility frost-strong {
   @apply border border-white/25 bg-white/20 backdrop-blur-xl;

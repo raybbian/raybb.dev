@@ -54,14 +54,6 @@ const SCARE_DUR = 0.7; // s a poke keeps scaring fish from that spot
 const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
 
-// The pond is a full-bleed background, so it must size to the *large* viewport
-// and stay put. `documentElement.client{Width,Height}` is the layout viewport:
-// on mobile it's the stable large size that doesn't shrink when the URL/tab
-// bar collapses, unlike `window.inner*`. Sizing off it keeps the canvas full
-// behind the bars and avoids a debounced reseed on every bar toggle.
-const viewportW = () => document.documentElement.clientWidth;
-const viewportH = () => document.documentElement.clientHeight;
-
 export default function FishBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
@@ -98,6 +90,15 @@ export default function FishBackground() {
       return;
     }
     const glPerf = instrumentGl(gl);
+
+    // Source of truth for the viewport is the canvas's own CSS box. The
+    // `pond-canvas` utility pins that to the *large* viewport (100lvh/100vw),
+    // so it always spans behind iOS Safari's collapsing toolbars — no gap when
+    // the bars retract, and no reseed churn when they merely toggle (the box
+    // doesn't change). We never write canvas.style.{width,height}, so these
+    // stay live and reflect real viewport changes (orientation, etc.).
+    const viewportW = () => canvas.clientWidth;
+    const viewportH = () => canvas.clientHeight;
 
     let width = viewportW();
     let height = viewportH();
@@ -200,8 +201,8 @@ export default function FishBackground() {
       lastDpr = dpr;
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
+      // CSS box is owned by `pond-canvas` (100lvh/100vw); only the backing
+      // store is sized here so canvas.client{Width,Height} stay authoritative.
       resizeTargets();
     };
     sizeCanvas();
@@ -529,7 +530,7 @@ export default function FishBackground() {
     <>
       <canvas
         ref={canvasRef}
-        className="pointer-events-none fixed inset-0 -z-10 h-full w-full"
+        className="pond-canvas pointer-events-none -z-10"
       />
       {showPerf && (
         <div
