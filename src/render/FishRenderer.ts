@@ -8,10 +8,11 @@ import {
   SHADOW_DARKNESS,
   SHADOW_FADE,
   SHADOW_K,
-  SHADOW_SUN_DIR,
+  WATER_H,
   castShadowOffset,
   fishHeight,
-  maxCastOffset,
+  shadowMargin,
+  shadowSunDir,
 } from "@/render/ShadowRenderer";
 import type { FishGeometry } from "@/sim/Fish";
 import type { KoiColors } from "@/sim/koiPattern";
@@ -48,6 +49,8 @@ interface ShadowLocs {
   bias: WebGLUniformLocation;
   fade: WebGLUniformLocation;
   recv: WebGLUniformLocation;
+  surfaceH: WebGLUniformLocation;
+  margin: WebGLUniformLocation;
   dbg: WebGLUniformLocation;
 }
 
@@ -65,6 +68,8 @@ function shadowLocs(
     bias: u("u_shadowBias"),
     fade: u("u_shadowFade"),
     recv: u("u_recvHeight"),
+    surfaceH: u("u_surfaceH"),
+    margin: u("u_shadowMargin"),
     dbg: u("u_shadowDebug"),
   };
 }
@@ -108,8 +113,12 @@ export class FishRenderer {
   private patternLoc: WebGLUniformLocation;
   private solidDepthLoc: WebGLUniformLocation;
   private ellipseDepthLoc: WebGLUniformLocation;
+  private solidTimeLoc: WebGLUniformLocation;
+  private ellipseTimeLoc: WebGLUniformLocation;
   private depth = 0; // submergence for the current draw()
+  private themeMix = 1; // 0 = dark, 1 = light; eased by the caller
   private scroll = 0; // parallax offset (logical px) for the current draw()
+  private time = 0; // seconds, drives the wavy-shadow displacement
 
   // Cast-shadow mask owned by ShadowRenderer, bound on unit 1.
   private solidShadow: ShadowLocs;
@@ -139,6 +148,8 @@ export class FishRenderer {
     this.patternLoc = gl.getUniformLocation(this.solidProg, "u_pattern")!;
     this.solidDepthLoc = gl.getUniformLocation(this.solidProg, "u_depth")!;
     this.ellipseDepthLoc = gl.getUniformLocation(this.ellipseProg, "u_depth")!;
+    this.solidTimeLoc = gl.getUniformLocation(this.solidProg, "u_time")!;
+    this.ellipseTimeLoc = gl.getUniformLocation(this.ellipseProg, "u_time")!;
     this.solidShadow = shadowLocs(gl, this.solidProg);
     this.ellipseShadow = shadowLocs(gl, this.ellipseProg);
 
@@ -257,11 +268,13 @@ export class FishRenderer {
     scroll: number,
   ) {
     const gl = this.gl;
-    const off = castShadowOffset(castHeight);
-    const mo = maxCastOffset();
+    const o = castShadowOffset(castHeight, this.themeMix);
+    const [mx, my] = shadowMargin();
+    // +mx folds in the X origin shift (mask grown both sides for the mirrored sun).
+    const off: [number, number] = [o[0] + mx, o[1]];
     if (geo.iCount > 0) {
       gl.useProgram(this.solidCastProg);
-      gl.uniform2f(this.solidCastRes, width + mo[0], height + mo[1]);
+      gl.uniform2f(this.solidCastRes, width + 2 * mx, height + my);
       gl.uniform1f(this.solidCastScroll, scroll);
       gl.uniform1f(this.solidCastHeight, castHeight);
       gl.uniform2f(this.solidCastOffset, off[0], off[1]);
@@ -285,7 +298,7 @@ export class FishRenderer {
     }
     if (geo.finCount > 0) {
       gl.useProgram(this.ellipseCastProg);
-      gl.uniform2f(this.ellipseCastRes, width + mo[0], height + mo[1]);
+      gl.uniform2f(this.ellipseCastRes, width + 2 * mx, height + my);
       gl.uniform1f(this.ellipseCastScroll, scroll);
       gl.uniform1f(this.ellipseCastHeight, castHeight);
       gl.uniform2f(this.ellipseCastOffset, off[0], off[1]);
@@ -341,6 +354,12 @@ export class FishRenderer {
 
   // Latches the per-frame mask + drawing-buffer size; uniforms are pushed per
   // program later in draw().
+  // 0 = dark pond, 1 = light pond. Eased by the caller so the cast offset and
+  // the receiver's sun lookup mirror in lockstep when the theme toggles.
+  setTheme(mix: number): void {
+    this.themeMix = mix;
+  }
+
   prepareShadow(tex: WebGLTexture, fragW: number, fragH: number) {
     this.shadowTex = tex;
     this.fragW = fragW;
@@ -352,12 +371,16 @@ export class FishRenderer {
   private applyShadow(l: ShadowLocs) {
     const gl = this.gl;
     gl.uniform2f(l.fragRes, this.fragW, this.fragH);
-    gl.uniform2f(l.sunDir, SHADOW_SUN_DIR[0], SHADOW_SUN_DIR[1]);
+    const sd = shadowSunDir(this.themeMix);
+    gl.uniform2f(l.sunDir, sd[0], sd[1]);
+    const [mx, my] = shadowMargin();
+    gl.uniform2f(l.margin, mx, my);
     gl.uniform1f(l.k, SHADOW_K);
     gl.uniform1f(l.dark, SHADOW_DARKNESS);
     gl.uniform1f(l.bias, SHADOW_BIAS);
     gl.uniform1f(l.fade, SHADOW_FADE);
     gl.uniform1f(l.recv, fishHeight(this.depth));
+    gl.uniform1f(l.surfaceH, WATER_H);
     gl.uniform1f(
       l.dbg,
       typeof window !== "undefined" &&
@@ -385,6 +408,7 @@ export class FishRenderer {
     gl.uniform2f(this.ellipseResLoc, res[0], res[1]);
     gl.uniform1f(this.ellipseScrollLoc, this.scroll);
     gl.uniform1f(this.ellipseDepthLoc, this.depth);
+    gl.uniform1f(this.ellipseTimeLoc, this.time);
     gl.uniform2f(this.ellipseOffset, 0, 0); // no cast offset on visible draws
     this.applyShadow(this.ellipseShadow);
     gl.bindVertexArray(this.ellipseVao);
@@ -402,11 +426,13 @@ export class FishRenderer {
     depth: number,
     paletteIndex = 0,
     scroll = 0,
+    time = 0,
   ) {
     const gl = this.gl;
     const res: [number, number] = [width, height];
     this.depth = depth;
     this.scroll = scroll;
+    this.time = time;
 
     // Painter order: fins under body, eyes on top.
     this.drawInstances(geo.finInstances, geo.finCount, res);
@@ -418,6 +444,7 @@ export class FishRenderer {
       gl.uniform2f(this.solidResLoc, width, height);
       gl.uniform1f(this.solidScrollLoc, scroll);
       gl.uniform1f(this.solidDepthLoc, depth);
+      gl.uniform1f(this.solidTimeLoc, time);
       gl.uniform2f(this.solidOffset, 0, 0); // no cast offset on visible draws
       gl.activeTexture(gl.TEXTURE0);
       const tex =

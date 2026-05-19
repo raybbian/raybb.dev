@@ -5,13 +5,15 @@ in float i_angle;   // outward facing direction (base + sway + flutter), rad
 in float i_len;     // petal root -> tip length, px
 in float i_half;    // petal half-width at the base, px
 in float i_inner;   // petal-root distance from the centre, px
-in vec3 i_color;
+in vec3 i_color;     // light theme
+in vec3 i_colorDark; // dark theme
 in float i_seed;
 uniform vec2 u_res;
 uniform float u_scroll; // parallax offset in logical px, subtracted from world y
 uniform vec2 u_castOffset; // shadow-cast pass: pre-project to the floor; 0 otherwise
 out vec2 v_local;   // triangle space: A=(0,-1) B=(0,1) C=(1,0)
 out vec3 v_color;
+out vec3 v_colorDark;
 out float v_seed;
 
 // Pixel space -> clip space ([0,res] -> [-1,1], y flipped).
@@ -31,5 +33,6 @@ void main() {
   gl_Position = vec4(clip, 0.0, 1.0);
   v_local = a_unit;
   v_color = i_color;
+  v_colorDark = i_colorDark;
   v_seed = i_seed;
 }

@@ -7,6 +7,7 @@ uniform highp vec2 u_res; // highp: shadow sample coord + fwidth AA need it
 uniform float u_time;
 uniform float u_scale;     // screenScale: px-unit constants scale like sizes
 uniform vec3 u_deep;       // deep-water tint target
+uniform float u_theme;     // 0 = dark pond, 1 = light pond
 uniform int u_rippleCount;
 uniform vec4 u_ripples[MAX_RIPPLES];      // cx, cy, radius, rot (px / rad)
 uniform float u_rippleNotch[MAX_RIPPLES]; // V-notch half-angle, rad
@@ -40,10 +41,28 @@ const float FOAM_FREQ = 4.0;
 const float FOAM_SPEED = 0.5;
 const float SHEEN = 0.06;
 
+// Livelier shadows. The shadow lookup gets a strong EXTRA displacement
+// (ambient refract + nearby ripple push) beyond the scene's, so a pad's own
+// ripples visibly churn its silhouette instead of the whole floor sliding
+// rigidly. Inside the shadow the floor reads cool + dimmed, not flat grey.
+const float WAVY_GAIN = 2.0;
+const vec3 SHADOW_COOL = vec3(0.05, 0.16, 0.28);
+const float COOL_AMT = 0.25;
+// Light-pond variants: a soft cool dimming instead of a deep blue, so a
+// shadowed patch under text stays bright. Lerped by u_theme at the use site.
+const vec3 SHADOW_COOL_L = vec3(0.41, 0.57, 0.62);
+const float COOL_AMT_L = 0.18;
+
 // Submergence s in (0,1]: 0 = open water (no fish), small = near surface,
 // large = deep.
 const vec3 DEEP_BLUE = vec3(0.04, 0.20, 0.42);
 const float DEPTH_TINT = 0.45;
+const vec3 DEEP_BLUE_L = vec3(0.34, 0.58, 0.66);
+const float DEPTH_TINT_L = 0.30;
+// Dark pond only: extra tint that grows with depth (super-linear), so deep
+// koi sink into the gloom faster. 0 at the surface, +this*fdC of the dark
+// tint at full submergence; lerped out (-> 0) toward the light pond.
+const float DEPTH_TINT_DEEP = 0.9;
 const float SHALLOW_GAIN = 2.0;
 const float SHALLOW_IN = 0.08;  // s where the refraction boost ramps in
 const float SHALLOW_PEAK = 0.22;
@@ -154,12 +173,25 @@ void main() {
   // Sample depth along the refracted lookup so the tint tracks the displaced
   // fish, not its undisturbed cell.
   float fdC = texture(u_fishDepth, suv).r;
-  col = mix(col, DEEP_BLUE, fdC * DEPTH_TINT);
+  // Dark mode steepens the falloff with depth; light mode stays linear.
+  float depthAmt = fdC * mix(DEPTH_TINT, DEPTH_TINT_L, u_theme)
+                 * (1.0 + mix(DEPTH_TINT_DEEP, 0.0, u_theme) * fdC);
+  col = mix(col, mix(DEEP_BLUE, DEEP_BLUE_L, u_theme),
+            clamp(depthAmt, 0.0, 1.0));
   col += mask * RIPPLE_CREST;
   // Fish are already shadowed in their own pass (baked into u_scene), so
-  // exclude them (fd > 0) here to avoid double-darken.
-  float hit = shadowHit(suv);
+  // exclude them (fd > 0) here to avoid double-darken. The wavy variant adds
+  // an extra refract+ripple offset on top of suv so the silhouette moves
+  // relative to the floor it sits on.
+  float hit = shadowHitWavy(suv, offsetPx * WAVY_GAIN);
   float openWater = 1.0 - smoothstep(0.0, 0.04, fdC);
-  col *= mix(1.0, 1.0 - u_shadowDark, hit * openWater);
+  float sh = hit * openWater;
+  // Cool, dimmed shadow instead of a flat grey multiply. The light pond
+  // uses a softer cool tint and a gentler darken so cast shadows don't
+  // punch dark holes a pale koi would otherwise hide a glyph behind.
+  vec3 shadowed = mix(col, mix(SHADOW_COOL, SHADOW_COOL_L, u_theme),
+                      mix(COOL_AMT, COOL_AMT_L, u_theme))
+                * (1.0 - u_shadowDark * mix(1.0, 0.5, u_theme));
+  col = mix(col, shadowed, sh);
   o = vec4(col, 1.0);
 }

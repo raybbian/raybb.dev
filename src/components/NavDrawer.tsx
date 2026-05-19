@@ -78,21 +78,21 @@ export default function NavDrawer() {
       <button
         aria-label={open ? "Close menu" : "Open menu"}
         onClick={() => setOpen((v) => !v)}
-        className="frost fixed right-5 top-5 z-50 grid h-11 w-11 place-items-center rounded-full transition-colors hover:bg-white/30 dark:hover:bg-black/50"
+        className="frost ink fixed right-5 top-5 z-50 grid h-11 w-11 place-items-center rounded-full transition-colors hover:bg-black/50"
       >
         <span className="relative block h-4 w-5">
           <span
-            className={`absolute left-0 top-0 h-0.5 w-full rounded-full bg-white transition-transform duration-300 ${
+            className={`absolute left-0 top-0 h-0.5 w-full rounded-full bg-current transition-transform duration-300 ${
               open ? "translate-y-[7px] rotate-45" : ""
             }`}
           />
           <span
-            className={`absolute left-0 top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full bg-white transition-opacity duration-300 ${
+            className={`absolute left-0 top-1/2 h-0.5 w-full -translate-y-1/2 rounded-full bg-current transition-opacity duration-300 ${
               open ? "opacity-0" : ""
             }`}
           />
           <span
-            className={`absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-white transition-transform duration-300 ${
+            className={`absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-current transition-transform duration-300 ${
               open ? "-translate-y-[7px] -rotate-45" : ""
             }`}
           />
@@ -116,10 +116,10 @@ export default function NavDrawer() {
             key={s.id}
             onClick={() => goToSection(s.id)}
             aria-current={active === s.id ? "true" : undefined}
-            className={`rounded-lg px-3 py-2 text-left text-xl font-semibold transition-colors hover:bg-white/15 hover:text-white dark:hover:bg-white/10 ${
+            className={`rounded-lg px-3 py-2 text-left text-xl font-semibold transition-colors hover:bg-white/10 ${
               active === s.id
-                ? "bg-white/15 text-white dark:bg-white/10"
-                : "text-white/80"
+                ? "ink bg-white/10"
+                : "ink-2"
             }`}
           >
             {s.label}
@@ -129,10 +129,10 @@ export default function NavDrawer() {
           href="/blog"
           onClick={() => setOpen(false)}
           aria-current={active === "blog" ? "true" : undefined}
-          className={`rounded-lg px-3 py-2 text-left text-xl font-semibold transition-colors hover:bg-white/10 hover:text-emerald-100 ${
+          className={`accent rounded-lg px-3 py-2 text-left text-xl font-semibold transition-colors hover:bg-white/10 ${
             active === "blog"
-              ? "bg-emerald-300/15 text-emerald-100"
-              : "text-emerald-200"
+              ? "bg-emerald-300/15"
+              : ""
           }`}
         >
           Blog

@@ -14,6 +14,8 @@ import {
   Hr,
 } from "@/components/prose";
 import { Video } from "@/components/Video";
+import { Figure } from "@/components/Figure";
+import { Footnote } from "@/components/Footnote";
 
 const components: MDXComponents = {
   h1: H1,
@@ -29,6 +31,8 @@ const components: MDXComponents = {
   pre: Pre,
   hr: Hr,
   Video,
+  Figure,
+  Footnote,
 };
 
 export function useMDXComponents(): MDXComponents {

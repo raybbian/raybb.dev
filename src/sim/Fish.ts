@@ -44,6 +44,9 @@ const SEEK_WEIGHT = 6; // desired-direction weight toward the treat
 const SEEK_SPEED_GAIN = 1.8; // extra speed factor when locked on
 const SEEK_TURN_GAIN = 2; // extra turn-limit factor when locked on
 const SATED_DUR = 2; // sec a fish ignores treats after eating one
+// Each meal closes this fraction of the gap to maxScale, so a fish grows
+// slightly with every feed and asymptotes at the cap (diminishing returns).
+const GROW_FEED_FRAC = 0.1;
 
 const SPEED_NOISE_FREQ = 0.08;
 const SPEED_VAR = 0.2; // +/- fraction of cruise from the noise lane
@@ -132,7 +135,9 @@ const SHADOW_UV: Vec2 = { x: -3000, y: -3000 };
 // render/ShadowRenderer.ts (sim/ must not import from render/). The fin is
 // vertical: its shadow is a band pinned at the spine and sheared along the
 // world-space sun vector by the fin's local height. World +y == screen +y, so
-// the screen-space sun dir is used directly, normalized.
+// the screen-space sun dir is used directly, normalized. buildGeometry()'s
+// sunSignX mirrors SUN_X with the theme (matches shadowSunDir): +1 light
+// (down-right), -1 dark (down-left), lerped through 0 on a toggle.
 const DORSAL_SHADOW_SCALE = 0.9;
 const DORSAL_SHADOW_ALPHA = 0.42;
 const SUN_LEN = Math.hypot(0.75, 0.83);
@@ -187,22 +192,23 @@ export class Fish {
   private t = 0; // seconds, accumulated in resolve() — drives swim noise
   private fixedDepth: number; // constant submergence, set once at construction
 
-  private bodyWidth: number[];
-  private snoutTipLen: number;
-  private snoutTipLenOpen: number;
-  private snoutOpenLipOut: number;
-  private snoutProtrude: number;
-  private eyeDiam: number;
-  private eyeOffset: number;
-  private pectoralW: number;
-  private pectoralH: number;
-  private ventralW: number;
-  private ventralH: number;
-  private dorsalCtrlDist: number;
-  private dorsalFinHeight: number;
-  private caudalAmp: number;
-  private caudalWidthGain: number;
-  private caudalWidthClamp: number;
+  // Set by applyScale() from the constructor and re-derived on each feed.
+  private bodyWidth!: number[];
+  private snoutTipLen!: number;
+  private snoutTipLenOpen!: number;
+  private snoutOpenLipOut!: number;
+  private snoutProtrude!: number;
+  private eyeDiam!: number;
+  private eyeOffset!: number;
+  private pectoralW!: number;
+  private pectoralH!: number;
+  private ventralW!: number;
+  private ventralH!: number;
+  private dorsalCtrlDist!: number;
+  private dorsalFinHeight!: number;
+  private caudalAmp!: number;
+  private caudalWidthGain!: number;
+  private caudalWidthClamp!: number;
 
   // Sense/containment distances, baked screen-scaled (see CRUISE_SPEED note).
   private containInset: number;
@@ -219,6 +225,8 @@ export class Fish {
   private burstRng: () => number;
   private burstTimer: number;
   private bursting = false;
+  private curScale: number; // grows toward maxScale as the fish is fed
+  private maxScale: number; // growth cap (the un-reduced rng max)
   private satedTimer = 0; // sec left ignoring treats after a recent meal
   private mouthOpen = 0; // [0,1] the snout geometry reads; pulses or held open
   private gulpT = -1; // sec into the current gulp pulse; <0 = mouth shut
@@ -269,6 +277,7 @@ export class Fish {
     scale = 1,
     swim: SwimParams = {},
     screenScale = 1,
+    maxScale = scale,
   ) {
     this.spine = new Chain(
       origin,
@@ -279,22 +288,9 @@ export class Fish {
     this.colors = colors;
     this.fixedDepth = depth < 0 ? 0 : depth > 1 ? 1 : depth;
 
-    this.bodyWidth = BODY_WIDTHS.map((w) => w * scale);
-    this.snoutTipLen = SNOUT_TIP_LEN * scale;
-    this.snoutTipLenOpen = SNOUT_OPEN_TIP_LEN * scale;
-    this.snoutOpenLipOut = SNOUT_OPEN_LIP_OUT * scale;
-    this.snoutProtrude = SNOUT_OPEN_PROTRUDE * scale;
-    this.eyeDiam = EYE_DIAM * scale;
-    this.eyeOffset = EYE_OFFSET * scale;
-    this.pectoralW = PECTORAL_W * scale;
-    this.pectoralH = PECTORAL_H * scale;
-    this.ventralW = VENTRAL_W * scale;
-    this.ventralH = VENTRAL_H * scale;
-    this.dorsalCtrlDist = DORSAL_CTRL_DIST * scale;
-    this.dorsalFinHeight = DORSAL_FIN_HEIGHT * scale;
-    this.caudalAmp = CAUDAL_AMP * scale;
-    this.caudalWidthGain = CAUDAL_WIDTH_GAIN * scale;
-    this.caudalWidthClamp = CAUDAL_WIDTH_CLAMP * scale;
+    this.curScale = scale;
+    this.maxScale = Math.max(scale, maxScale);
+    this.applyScale(scale);
 
     // Speed and sense radii scale with the screen like sizes do, so the
     // school behaves the same relative to the pond at any resolution.
@@ -327,9 +323,35 @@ export class Fish {
     return this.pos(0, 0, this.snoutTipLen);
   }
 
+  // Re-derives every size-dependent field from `s`. Called once at
+  // construction and again on each feed so the fish can grow in place.
+  private applyScale(s: number): void {
+    this.spine.linkSize = CHAIN_LINK_SIZE * s;
+    this.bodyWidth = BODY_WIDTHS.map((w) => w * s);
+    this.snoutTipLen = SNOUT_TIP_LEN * s;
+    this.snoutTipLenOpen = SNOUT_OPEN_TIP_LEN * s;
+    this.snoutOpenLipOut = SNOUT_OPEN_LIP_OUT * s;
+    this.snoutProtrude = SNOUT_OPEN_PROTRUDE * s;
+    this.eyeDiam = EYE_DIAM * s;
+    this.eyeOffset = EYE_OFFSET * s;
+    this.pectoralW = PECTORAL_W * s;
+    this.pectoralH = PECTORAL_H * s;
+    this.ventralW = VENTRAL_W * s;
+    this.ventralH = VENTRAL_H * s;
+    this.dorsalCtrlDist = DORSAL_CTRL_DIST * s;
+    this.dorsalFinHeight = DORSAL_FIN_HEIGHT * s;
+    this.caudalAmp = CAUDAL_AMP * s;
+    this.caudalWidthGain = CAUDAL_WIDTH_GAIN * s;
+    this.caudalWidthClamp = CAUDAL_WIDTH_CLAMP * s;
+  }
+
   eat(): void {
     this.satedTimer = SATED_DUR;
     this.gulpT = -1; // mouth was held open to feed; let it ease shut
+    if (this.curScale < this.maxScale) {
+      this.curScale += (this.maxScale - this.curScale) * GROW_FEED_FRAC;
+      this.applyScale(this.curScale);
+    }
   }
 
   get sated(): boolean {
@@ -498,7 +520,9 @@ export class Fish {
     return this.posInto({ x: 0, y: 0 }, i, angleOffset, lenOffset);
   }
 
-  buildGeometry(): FishGeometry {
+  // `sunSignX` mirrors the dorsal shadow's horizontal shear with the theme
+  // (see SUN_X comment); defaults to the light pond (+1).
+  buildGeometry(sunSignX = 1): FishGeometry {
     const j = this.spine.joints;
     const a = this.spine.angles;
 
@@ -767,7 +791,7 @@ export class Fish {
       nuv.x = SHADOW_UV.x;
       nuv.y = SHADOW_UV.y;
       bwn++;
-      farX[i] = b.x + SUN_X * h;
+      farX[i] = b.x + SUN_X * sunSignX * h;
       farY[i] = b.y + SUN_Y * h;
     }
     for (let i = baseEnd - 1; i >= 0; i--) {

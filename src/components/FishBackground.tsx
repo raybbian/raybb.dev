@@ -18,8 +18,11 @@ import { pickKoiColors } from "@/sim/koiPattern";
 import { instrumentGl } from "@/lib/glPerf";
 
 const FISH_COUNT = 9;
-const FISH_SCALE_MEAN = 0.5; // vs the original single fish
+const FISH_SCALE_MEAN = 0.475; // 5% smaller than the original school
 const FISH_SCALE_VAR = 0.2; // +/- fraction around the mean
+// Growth cap = the pre-reduction rng max (old mean 0.5 * (1 + var)). Feeding
+// grows a fish up toward, but never past, this.
+const FISH_SCALE_CAP = 0.6;
 const SPAWN_INSET = 0.15;
 const FISH_DEPTH_MIN = 0.18; // fixed submergence range, no bob
 const FISH_DEPTH_MAX = 0.68;
@@ -125,6 +128,7 @@ export default function FishBackground() {
     // the initial visible window; edge avoidance keeps them on screen after.
     const makeFishes = () =>
       palettes.map((p, i) => {
+        const maxScale = FISH_SCALE_CAP * screenScale;
         const scale =
           FISH_SCALE_MEAN *
           (1 + (rng() * 2 - 1) * FISH_SCALE_VAR) *
@@ -146,6 +150,7 @@ export default function FishBackground() {
             seed: (rng() * 2 ** 32) >>> 0,
           },
           screenScale,
+          maxScale,
         );
         return { fish, palette: i };
       });
@@ -168,6 +173,21 @@ export default function FishBackground() {
     let treats = new Treats(screenScale);
     const treatRenderer = new TreatRenderer(gl);
     let ripples = new Ripples(screenScale);
+    // Pond palette tracks the site theme. 1 = light pond, 0 = dark. themeMix
+    // eases toward the target so a toggle fades the water in lockstep with
+    // the CSS frost transition (~250ms) instead of snapping.
+    const readThemeTarget = () =>
+      document.documentElement.dataset.theme === "dark" ? 0 : 1;
+    let themeTarget = readThemeTarget();
+    let themeMix = themeTarget; // start settled: no fade on first paint
+    const themeObs = new MutationObserver(() => {
+      themeTarget = readThemeTarget();
+    });
+    themeObs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
     const mouse = { x: width / 2, y: height / 2 };
     const prevMouse = { x: width / 2, y: height / 2 };
     // Camera into the infinite pond (logical px). worldY is a pure function
@@ -413,9 +433,24 @@ export default function FishBackground() {
       // passes (single source of truth per frame).
       const inst = lilypads.buildInstances();
       const lotusInst = lotuses.buildInstances();
+      // Ease the pond palette toward the active theme (~250ms, matches the
+      // frost CSS transition) BEFORE the shadow cast pass so the mirrored sun
+      // (cast offset, dorsal shear, receiver lookup) all move in lockstep.
+      if (themeMix !== themeTarget) {
+        const d = themeTarget - themeMix;
+        const step = (dt / 0.25) * Math.sign(d);
+        themeMix =
+          Math.abs(step) >= Math.abs(d) ? themeTarget : themeMix + step;
+      }
+      water.setTheme(themeMix);
+      renderer.setTheme(themeMix);
+      lpRenderer.setTheme(themeMix);
+      lotusRenderer.setTheme(themeMix);
+      // +1 light / -1 dark, lerped through 0: mirrors SHADOW_SUN_DIR's X.
+      const sunSignX = 2 * themeMix - 1;
       // Deepest-first paint order so shallow fish draw on top.
       ordered.sort((a, b) => b.fish.depth - a.fish.depth);
-      for (const e of ordered) e.geo = e.fish.buildGeometry();
+      for (const e of ordered) e.geo = e.fish.buildGeometry(sunSignX);
 
       // Must precede the frame's first GL call.
       glPerf.beginFrame();
@@ -443,7 +478,7 @@ export default function FishBackground() {
       // on top of the water pass, so no ripple/refraction touches them.
       water.beginScene();
       for (const { fish, geo, palette } of ordered) {
-        renderer.draw(geo, width, height, fish.depth, palette, worldY);
+        renderer.draw(geo, width, height, fish.depth, palette, worldY, now / 1000);
       }
 
       // Treats sink, so render into the scene MRT before the water pass —
@@ -516,6 +551,7 @@ export default function FishBackground() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll);
       ro.disconnect();
+      themeObs.disconnect();
       renderer.dispose();
       lpRenderer.dispose();
       lotusRenderer.dispose();

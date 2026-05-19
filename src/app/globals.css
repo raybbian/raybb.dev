@@ -7,12 +7,50 @@
   --font-mono: var(--font-geist-mono);
 }
 
+:root {
+  /* Water reverts to origin/main's teal; everything else mirrors dark. */
+  --pond: #2f8a86;
+  --ink: #ffffff;
+  --ink-2: rgb(255 255 255 / 0.8);
+  --ink-3: rgb(255 255 255 / 0.5);
+  --accent: #a7f3d0;
+  --ink-shadow-strong: 0 3px 12px rgb(0 0 0 / 0.5);
+  --ink-shadow: 0 2px 8px rgb(0 0 0 / 0.45);
+}
+/* Only the water differs per theme; all chrome is collapsed to one look. */
+[data-theme="dark"] {
+  --pond: #1c5e5c;
+}
+
+@utility ink {
+  color: var(--ink);
+  text-shadow: var(--ink-shadow-strong);
+  transition:
+    color 250ms ease,
+    text-shadow 250ms ease;
+}
+@utility ink-2 {
+  color: var(--ink-2);
+  transition: color 250ms ease;
+}
+@utility ink-3 {
+  color: var(--ink-3);
+  transition: color 250ms ease;
+}
+@utility accent {
+  color: var(--accent);
+  transition: color 250ms ease;
+}
+@utility ink-shadow {
+  text-shadow: var(--ink-shadow);
+  transition: text-shadow 250ms ease;
+}
+
 /* Shared frosted-glass surface. Consumers add their own radius/padding/hover.
    The transition makes theme-swap ride the same 250ms color animation as
    consumers' hover transitions. */
 @utility frost {
-  @apply border border-white/25 bg-white/20 backdrop-blur-md;
-  @apply dark:border-white/10 dark:bg-black/35;
+  @apply border border-white/10 bg-black/35 backdrop-blur-lg;
   transition:
     background-color 250ms ease,
     border-color 250ms ease;
@@ -35,21 +73,22 @@
 
 /* Stronger blur for full-height panels like the side drawer. */
 @utility frost-strong {
-  @apply border border-white/25 bg-white/20 backdrop-blur-xl;
-  @apply dark:border-white/10 dark:bg-black/40;
+  @apply border border-white/10 bg-black/40 backdrop-blur-xl;
   transition:
     background-color 250ms ease,
     border-color 250ms ease;
 }
 
 html {
-  background: #2f8a86;
+  background: var(--pond);
   scroll-behavior: smooth;
-  /* Sections opt in via `snap-start`; pages without snap points (blog)
-     scroll normally. `proximity` (not `mandatory`): iOS Safari's snap engine
-     aborts JS-initiated smooth scrolls under `mandatory` and re-snaps to the
-     origin, so `scrollIntoView` from the nav drawer visibly bounces back. */
-  scroll-snap-type: y proximity;
+  transition: background-color 250ms ease;
+}
+
+@media (min-width: 1024px) {
+  html {
+    scroll-snap-type: y mandatory;
+  }
 }
 
 .no-scrollbar {
@@ -88,6 +127,7 @@ html {
 
 body {
   background: transparent;
-  color: #ededed;
+  color: var(--ink);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  transition: color 250ms ease;
 }

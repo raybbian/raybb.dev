@@ -1,12 +1,13 @@
 import { createProgram } from "@/lib/gl";
-import { BG, RENDER_MSAA } from "@/render/frame";
+import { BG_DARK, BG_LIGHT, RENDER_MSAA } from "@/render/frame";
 import {
   SHADOW_BIAS,
   SHADOW_DARKNESS,
   SHADOW_FADE,
   SHADOW_K,
-  SHADOW_SUN_DIR,
   WATER_H,
+  shadowMargin,
+  shadowSunDir,
 } from "@/render/ShadowRenderer";
 import VS from "@/shaders/water.vert.glsl";
 import FS from "@/shaders/water.frag.glsl";
@@ -40,7 +41,12 @@ export interface RippleSink {
   ): void;
 }
 const REFRACT_SHIFT = 2; // ambient refraction baked at 1/4 res (low-freq)
-const DEEP: [number, number, number] = [0.114, 0.373, 0.361]; // #1d5f5c
+// `u_deep` SHEEN target, per theme (lerped by themeMix). Dark: #1d5f5c.
+// Light: origin/main's original deep teal (#1d5f5c).
+const DEEP_DARK: [number, number, number] = [0.06, 0.26, 0.25];
+const DEEP_LIGHT: [number, number, number] = [0.114, 0.373, 0.361];
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 // Define must follow the `#version` line (GLSL requires `#version` first).
 const def = `#define MAX_RIPPLES ${MAX_RIPPLES}\n`;
@@ -92,7 +98,11 @@ export class WaterRenderer {
   private uRes: WebGLUniformLocation;
   private uTime: WebGLUniformLocation;
   private uDeep: WebGLUniformLocation;
+  private uTheme: WebGLUniformLocation;
   private uRippleCount: WebGLUniformLocation;
+  // 0 = dark pond, 1 = light pond. Animated by the caller so a theme
+  // toggle fades the water in lockstep with the CSS frost transition.
+  private themeMix = 0;
   private uRipples: WebGLUniformLocation;
   private uRippleNotch: WebGLUniformLocation;
   private uRippleAmp: WebGLUniformLocation;
@@ -102,6 +112,7 @@ export class WaterRenderer {
   private uShadow: WebGLUniformLocation;
   private uShadowDark: WebGLUniformLocation;
   private uSunDir: WebGLUniformLocation;
+  private uShadowMargin: WebGLUniformLocation;
   private uShadowK: WebGLUniformLocation;
   private uShadowBias: WebGLUniformLocation;
   private uShadowFade: WebGLUniformLocation;
@@ -122,6 +133,7 @@ export class WaterRenderer {
     this.uRes = u("u_res");
     this.uTime = u("u_time");
     this.uDeep = u("u_deep");
+    this.uTheme = u("u_theme");
     this.uRippleCount = u("u_rippleCount");
     this.uRipples = u("u_ripples");
     this.uRippleNotch = u("u_rippleNotch");
@@ -132,6 +144,7 @@ export class WaterRenderer {
     this.uShadow = u("u_shadow");
     this.uShadowDark = u("u_shadowDark");
     this.uSunDir = u("u_sunDir");
+    this.uShadowMargin = u("u_shadowMargin");
     this.uShadowK = u("u_shadowK");
     this.uShadowBias = u("u_shadowBias");
     this.uShadowFade = u("u_shadowFade");
@@ -154,6 +167,12 @@ export class WaterRenderer {
     this.fishDepthTex = gl.createTexture()!;
     this.outFbo = gl.createFramebuffer()!;
     this.outTex = gl.createTexture()!;
+  }
+
+  // mix in [0,1]: 0 = dark pond, 1 = light pond. Set once per frame before
+  // beginScene()/composite() so the clear colour and shader tints agree.
+  setTheme(mix: number): void {
+    this.themeMix = mix;
   }
 
   beginRipples(): void {
@@ -192,7 +211,13 @@ export class WaterRenderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaaFboObj);
     gl.viewport(0, 0, this.w, this.h);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
-    gl.clearBufferfv(gl.COLOR, 0, BG);
+    const t = this.themeMix;
+    gl.clearBufferfv(gl.COLOR, 0, [
+      lerp(BG_DARK[0], BG_LIGHT[0], t),
+      lerp(BG_DARK[1], BG_LIGHT[1], t),
+      lerp(BG_DARK[2], BG_LIGHT[2], t),
+      1,
+    ]);
     gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 1]); // R=0 -> no fish
     gl.disable(gl.DEPTH_TEST);
   }
@@ -350,7 +375,10 @@ export class WaterRenderer {
     gl.bindTexture(gl.TEXTURE_2D, shadowTex);
     gl.uniform1i(this.uShadow, 3);
     gl.uniform1f(this.uShadowDark, SHADOW_DARKNESS);
-    gl.uniform2f(this.uSunDir, SHADOW_SUN_DIR[0], SHADOW_SUN_DIR[1]);
+    const sd = shadowSunDir(this.themeMix);
+    gl.uniform2f(this.uSunDir, sd[0], sd[1]);
+    const [mx, my] = shadowMargin();
+    gl.uniform2f(this.uShadowMargin, mx, my);
     gl.uniform1f(this.uShadowK, SHADOW_K);
     gl.uniform1f(this.uShadowBias, SHADOW_BIAS);
     gl.uniform1f(this.uShadowFade, SHADOW_FADE);
@@ -358,7 +386,14 @@ export class WaterRenderer {
     gl.uniform2f(this.uRes, width, height);
     gl.uniform1f(this.uTime, time);
     gl.uniform1f(this.uScale, screenScale);
-    gl.uniform3fv(this.uDeep, DEEP);
+    const t = this.themeMix;
+    gl.uniform1f(this.uTheme, t);
+    gl.uniform3f(
+      this.uDeep,
+      lerp(DEEP_DARK[0], DEEP_LIGHT[0], t),
+      lerp(DEEP_DARK[1], DEEP_LIGHT[1], t),
+      lerp(DEEP_DARK[2], DEEP_LIGHT[2], t),
+    );
 
     gl.uniform1i(this.uRippleCount, this.rippleCount);
     gl.uniform4fv(this.uRipples, this.rippleScratch);

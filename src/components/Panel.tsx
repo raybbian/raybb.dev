@@ -11,7 +11,7 @@ export default function Panel({
 }) {
   return (
     <Tag
-      className={`frost rounded-2xl shadow-lg shadow-black/10 dark:shadow-black/30 ${className}`}
+      className={`frost rounded-2xl shadow-lg shadow-black/30 ${className}`}
     >
       {children}
     </Tag>

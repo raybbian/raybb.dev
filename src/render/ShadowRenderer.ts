@@ -5,7 +5,10 @@ import { RENDER_MSAA } from "@/render/frame";
 // receiver at height `recvH` is shadowed by anything taller; the gap
 // (casterH - recvH) drives shadow displacement along the sun and its intensity.
 
-// Sun upper-left; shadows fall down-right (screen px, y-down).
+// Light pond: sun upper-left, shadows fall down-right (screen px, y-down).
+// Dark pond mirrors X (sun swings overhead to upper-right -> shadows down-LEFT);
+// shadowSunDir() lerps between the two by themeMix so a toggle sweeps the sun
+// across the top (straight-down shadows at the midpoint).
 export const SHADOW_SUN_DIR: [number, number] = [0.75, 0.83];
 // Logical px the shadow slides per unit height gap.
 export const SHADOW_K = 138;
@@ -41,19 +44,32 @@ export function fishHeight(submergence: number): number {
   return FISH_TOP_H - submergence * FISH_SPAN_H;
 }
 
-// World-px shift applied to a caster in the cast pass so its silhouette lands
-// where its shadow falls on the floor (height 0). Mirrors the receiver's
-// SHADOW_SUN_DIR usage so net displacement stays K*(casterH - recvH).
-export function castShadowOffset(castHeight: number): [number, number] {
-  const m = SHADOW_K * castHeight;
-  return [m * SHADOW_SUN_DIR[0], m * SHADOW_SUN_DIR[1]];
+// Theme-lerped sun direction. themeMix 1 = light (down-right), 0 = dark
+// (down-left); the X component crosses 0 at the midpoint so the toggle reads as
+// the sun arcing overhead. Y (downward) is unchanged — only the side mirrors.
+export function shadowSunDir(themeMix: number): [number, number] {
+  return [SHADOW_SUN_DIR[0] * (2 * themeMix - 1), SHADOW_SUN_DIR[1]];
 }
 
-// Largest pre-projection any caster gets (tallest caster, height 1). Casters
-// only shift bottom-right, so the mask is grown by exactly this on the far
-// side (no symmetric margin); receivers remap their lookup into the grown mask.
-export function maxCastOffset(): [number, number] {
-  return castShadowOffset(1.0);
+// World-px shift applied to a caster in the cast pass so its silhouette lands
+// where its shadow falls on the floor (height 0). Mirrors the receiver's
+// u_sunDir usage so net displacement stays K*(casterH - recvH).
+export function castShadowOffset(
+  castHeight: number,
+  themeMix: number,
+): [number, number] {
+  const m = SHADOW_K * castHeight;
+  const d = shadowSunDir(themeMix);
+  return [m * d[0], m * d[1]];
+}
+
+// Max one-side pre-projection (tallest caster, height 1). Because the sun
+// mirrors with theme, a caster can shift up to this far LEFT *or* RIGHT, so the
+// mask is grown by margin.x on BOTH sides (origin shifted right by margin.x);
+// Y still only falls downward, so it grows on the bottom only. Receivers remap
+// their lookup into the grown mask with the same margin.
+export function shadowMargin(): [number, number] {
+  return [SHADOW_K * SHADOW_SUN_DIR[0], SHADOW_K * SHADOW_SUN_DIR[1]];
 }
 
 // Owns the RG8 premultiplied (height, coverage) mask. Between begin() and
@@ -86,12 +102,12 @@ export class ShadowRenderer {
   }
 
   // `w`/`h` are drawing-buffer px; `dpr` converts the logical guard band to
-  // drawing px. Grown by maxCastOffset() on the far side so a caster
-  // pre-projected to the floor never clamps at the edge.
+  // drawing px. Grown by shadowMargin() on BOTH sides in X (sun mirrors with
+  // theme) and on the bottom in Y, so a floor-projected caster never clamps.
   resize(w: number, h: number, dpr: number) {
-    const [ox, oy] = maxCastOffset();
-    const sw = Math.max(1, w + Math.ceil(ox * dpr));
-    const sh = Math.max(1, h + Math.ceil(oy * dpr));
+    const [mx, my] = shadowMargin();
+    const sw = Math.max(1, w + Math.ceil(2 * mx * dpr));
+    const sh = Math.max(1, h + Math.ceil(my * dpr));
     if (sw === this.sw && sh === this.sh) return;
     this.sw = sw;
     this.sh = sh;

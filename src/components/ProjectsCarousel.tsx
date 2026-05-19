@@ -224,7 +224,7 @@ export default function ProjectsCarousel() {
   };
 
   const arrowClass =
-    "frost absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-base text-white transition-all duration-300 hover:bg-white/30 dark:hover:bg-black/50";
+    "frost ink absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-base transition-all duration-300 hover:bg-black/50";
   const hidden = "pointer-events-none opacity-0";
 
   return (

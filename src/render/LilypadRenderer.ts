@@ -10,9 +10,9 @@ import {
   SHADOW_DARKNESS,
   SHADOW_FADE,
   SHADOW_K,
-  SHADOW_SUN_DIR,
   castShadowOffset,
-  maxCastOffset,
+  shadowMargin,
+  shadowSunDir,
 } from "@/render/ShadowRenderer";
 import VS from "@/shaders/lilypad.vert.glsl";
 import FS from "@/shaders/lilypad.frag.glsl";
@@ -45,7 +45,9 @@ export class LilypadRenderer {
     bias: WebGLUniformLocation;
     fade: WebGLUniformLocation;
     recv: WebGLUniformLocation;
+    margin: WebGLUniformLocation;
   };
+  private themeMix = 1; // 0 = dark, 1 = light; eased by the caller
   private capacityFloats = 0; // instVbo size, grown on demand
 
   constructor(gl: WebGL2RenderingContext) {
@@ -70,6 +72,7 @@ export class LilypadRenderer {
       bias: u("u_shadowBias"),
       fade: u("u_shadowFade"),
       recv: u("u_recvHeight"),
+      margin: u("u_shadowMargin"),
     };
 
     const circle = unitCircleMesh(CIRCLE_SEG);
@@ -119,6 +122,12 @@ export class LilypadRenderer {
     }
   }
 
+  // 0 = dark pond, 1 = light pond. Eased by the caller so the cast offset and
+  // the receiver's sun lookup mirror in lockstep when the theme toggles.
+  setTheme(mix: number): void {
+    this.themeMix = mix;
+  }
+
   // Caster pass: real pad outline (notch carved) into the bound height mask.
   // No-blend / no-depth state is set by ShadowRenderer.begin().
   cast(
@@ -132,12 +141,13 @@ export class LilypadRenderer {
     const gl = this.gl;
     this.upload(data, count);
     gl.useProgram(this.castProg);
-    const mo = maxCastOffset();
-    gl.uniform2f(this.castResLoc, width + mo[0], height + mo[1]);
+    const [mx, my] = shadowMargin();
+    gl.uniform2f(this.castResLoc, width + 2 * mx, height + my);
     gl.uniform1f(this.castScrollLoc, scroll);
     gl.uniform1f(this.castHeightLoc, LILYPAD_H);
-    const off = castShadowOffset(LILYPAD_H);
-    gl.uniform2f(this.castOffsetLoc, off[0], off[1]);
+    const off = castShadowOffset(LILYPAD_H, this.themeMix);
+    // +mx folds in the X origin shift (mask grown both sides for the mirrored sun).
+    gl.uniform2f(this.castOffsetLoc, off[0] + mx, off[1]);
     gl.bindVertexArray(this.castVao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, this.circleCount, count);
     gl.bindVertexArray(null);
@@ -161,7 +171,10 @@ export class LilypadRenderer {
     gl.uniform2f(this.resLoc, width, height);
     gl.uniform1f(this.scrollLoc, scroll);
     gl.uniform2f(this.sh.fragRes, fragW, fragH);
-    gl.uniform2f(this.sh.sunDir, SHADOW_SUN_DIR[0], SHADOW_SUN_DIR[1]);
+    const sd = shadowSunDir(this.themeMix);
+    gl.uniform2f(this.sh.sunDir, sd[0], sd[1]);
+    const [mx, my] = shadowMargin();
+    gl.uniform2f(this.sh.margin, mx, my);
     gl.uniform1f(this.sh.k, SHADOW_K);
     gl.uniform1f(this.sh.dark, SHADOW_DARKNESS);
     gl.uniform1f(this.sh.bias, SHADOW_BIAS);

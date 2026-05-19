@@ -3,7 +3,7 @@ import { LOTUS_INST_FLOATS } from "@/sim/Lotuses";
 import {
   LOTUS_H,
   castShadowOffset,
-  maxCastOffset,
+  shadowMargin,
 } from "@/render/ShadowRenderer";
 import VS from "@/shaders/lotus.vert.glsl";
 import FS from "@/shaders/lotus.frag.glsl";
@@ -41,6 +41,8 @@ export class LotusRenderer {
   private castHeightLoc: WebGLUniformLocation;
   private castOffsetLoc: WebGLUniformLocation;
   private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw (shares cast VS)
+  private themeLoc: WebGLUniformLocation; // 0 = dark, 1 = light; eased by caller
+  private themeMix = 1;
   private capacityFloats = 0;
 
   constructor(gl: WebGL2RenderingContext) {
@@ -55,6 +57,7 @@ export class LotusRenderer {
     this.castOffsetLoc =
       gl.getUniformLocation(this.castProg, "u_castOffset")!;
     this.offsetLoc = gl.getUniformLocation(this.prog, "u_castOffset")!;
+    this.themeLoc = gl.getUniformLocation(this.prog, "u_theme")!;
 
     const quad = petalQuad();
     this.quadCount = quad.length / 2;
@@ -83,10 +86,17 @@ export class LotusRenderer {
       ["i_half", 1],
       ["i_inner", 1],
       ["i_color", 3],
+      ["i_colorDark", 3],
       ["i_seed", 1],
     ]);
     gl.bindVertexArray(null);
     return vao;
+  }
+
+  // 0 = dark pond, 1 = light pond. The caller eases this so the petal
+  // palette cross-fades smoothly when the site theme toggles.
+  setTheme(mix: number): void {
+    this.themeMix = mix;
   }
 
   private upload(data: Float32Array, count: number) {
@@ -114,12 +124,13 @@ export class LotusRenderer {
     const gl = this.gl;
     this.upload(data, count);
     gl.useProgram(this.castProg);
-    const mo = maxCastOffset();
-    gl.uniform2f(this.castResLoc, width + mo[0], height + mo[1]);
+    const [mx, my] = shadowMargin();
+    gl.uniform2f(this.castResLoc, width + 2 * mx, height + my);
     gl.uniform1f(this.castScrollLoc, scroll);
     gl.uniform1f(this.castHeightLoc, LOTUS_H);
-    const off = castShadowOffset(LOTUS_H);
-    gl.uniform2f(this.castOffsetLoc, off[0], off[1]);
+    const off = castShadowOffset(LOTUS_H, this.themeMix);
+    // +mx folds in the X origin shift (mask grown both sides for the mirrored sun).
+    gl.uniform2f(this.castOffsetLoc, off[0] + mx, off[1]);
     gl.bindVertexArray(this.castVao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, this.quadCount, count);
     gl.bindVertexArray(null);
@@ -140,6 +151,7 @@ export class LotusRenderer {
     gl.uniform2f(this.resLoc, width, height);
     gl.uniform1f(this.scrollLoc, scroll);
     gl.uniform2f(this.offsetLoc, 0, 0); // no cast offset on visible draws
+    gl.uniform1f(this.themeLoc, this.themeMix);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindVertexArray(this.vao);

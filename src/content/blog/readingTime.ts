@@ -4,7 +4,12 @@ import path from "node:path";
 // Server-only (build-time SSG). Strips the metadata export and code fences
 // from the raw .mdx for a rough word count.
 export function readingTimeMinutes(slug: string): number {
-  const file = path.join(process.cwd(), "src/content/blog", `${slug}.mdx`);
+  const file = path.join(
+    process.cwd(),
+    "src/content/blog",
+    slug,
+    "index.mdx",
+  );
   const raw = readFileSync(file, "utf8");
   const text = raw
     .replace(/export const metadata[\s\S]*?};/, "")

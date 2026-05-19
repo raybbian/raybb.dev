@@ -2,26 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { FaMoon, FaSun } from "react-icons/fa6";
-
-type Theme = "light" | "dark";
-
-// MutationObserver so the button stays in sync if anything else mutates
-// data-theme (devtools, a future second toggle).
-const subscribeTheme = (cb: () => void) => {
-  const obs = new MutationObserver(cb);
-  obs.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
-  });
-  return () => obs.disconnect();
-};
-
-const readTheme = (): Theme =>
-  document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-
-// SSR has no data-theme yet (pre-paint script runs in the browser only), so
-// default to light. The hydrated render reads the actual attribute.
-const themeOnServer = (): Theme => "light";
+import { useTheme, type Theme } from "@/lib/useTheme";
 
 // Mounted flag (server = false, client = true), used to suppress the icon
 // rotation on first paint so a dark-mode visitor doesn't see the
@@ -29,11 +10,7 @@ const themeOnServer = (): Theme => "light";
 const noopSubscribe = () => () => {};
 
 export default function ThemeToggle() {
-  const theme = useSyncExternalStore(
-    subscribeTheme,
-    readTheme,
-    themeOnServer,
-  );
+  const theme = useTheme();
   const mounted = useSyncExternalStore(
     noopSubscribe,
     () => true,
@@ -57,7 +34,7 @@ export default function ThemeToggle() {
       aria-pressed={isDark}
       onClick={toggle}
       suppressHydrationWarning
-      className="frost fixed bottom-5 right-5 z-50 grid h-11 w-11 place-items-center rounded-full text-white transition-colors hover:bg-white/30 dark:hover:bg-black/50"
+      className="frost ink fixed bottom-5 right-5 z-50 grid h-11 w-11 place-items-center rounded-full transition-colors hover:bg-black/50"
     >
       <span className="relative grid h-4 w-4 place-items-center">
         <FaSun

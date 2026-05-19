@@ -9,8 +9,9 @@ import {
 import type { PokeHit } from "@/sim/Lilypads";
 import type { RippleSink } from "@/render/WaterRenderer";
 
-// Instance layout: cx,cy, angle, len, half, inner, r,g,b, seed (noise phase).
-export const LOTUS_INST_FLOATS = 10;
+// Instance layout: cx,cy, angle, len, half, inner, r,g,b (light theme),
+// rD,gD,bD (dark theme), seed (noise phase). The shader lerps light<->dark.
+export const LOTUS_INST_FLOATS = 13;
 
 // Only `angle` (sway/flutter) and the size scale vary per frame.
 interface Petal {
@@ -18,7 +19,8 @@ interface Petal {
   inner: number; // root distance from centre, px
   len: number; // root -> tip length, px
   half: number; // half-width at the base, px
-  rgb: [number, number, number];
+  rgb: [number, number, number]; // light theme: pink centre -> white edge
+  rgbDark: [number, number, number]; // dark theme: bright-blue centre -> dark-blue edge
   flutterP: number; // per-petal flutter phase
 }
 
@@ -58,6 +60,10 @@ const PINK_HUE = 0.95;
 const HUE_JITTER: [number, number] = [-0.03, 0.03]; // per-lotus hue shift
 const CENTER_SL: [number, number] = [0.72, 0.74]; // [sat, light] at the centre
 const EDGE_SL: [number, number] = [0.06, 0.97]; // [sat, light] at the outer edge
+// Dark-theme palette: bright blue inner ring -> deep blue outer ring.
+const BLUE_HUE = 0.575; // slightly green-leaning blue
+const DARK_CENTER_SL: [number, number] = [0.85, 0.66]; // bright blue at the centre
+const DARK_EDGE_SL: [number, number] = [0.8, 0.29]; // dark blue at the outer edge
 const SWAY_AMP: [number, number] = [0.04, 0.1]; // rad
 const SWAY_W: [number, number] = [0.25, 0.55]; // rad/s
 const BOB_AMP: [number, number] = [0.015, 0.035]; // fraction of size
@@ -132,6 +138,12 @@ function placeBandLotuses(
         const light = CENTER_SL[1] + (EDGE_SL[1] - CENTER_SL[1]) * fr;
         const c = hslToRgb(PINK_HUE + hueJitter, sat, light);
         const rgb: [number, number, number] = [c[0], c[1], c[2]];
+        const satD =
+          DARK_CENTER_SL[0] + (DARK_EDGE_SL[0] - DARK_CENTER_SL[0]) * fr;
+        const lightD =
+          DARK_CENTER_SL[1] + (DARK_EDGE_SL[1] - DARK_CENTER_SL[1]) * fr;
+        const cD = hslToRgb(BLUE_HUE + hueJitter, satD, lightD);
+        const rgbDark: [number, number, number] = [cD[0], cD[1], cD[2]];
         // Offset alternate rings by half a step so petals nest into the gaps
         // of the ring beneath.
         const ringOffset = baseAngle + (j % 2) * (Math.PI / ringPetals);
@@ -142,6 +154,7 @@ function placeBandLotuses(
             len,
             half,
             rgb,
+            rgbDark,
             flutterP: rng() * TAU,
           });
         }
@@ -301,6 +314,9 @@ export class Lotuses {
           out[o++] = p.rgb[0];
           out[o++] = p.rgb[1];
           out[o++] = p.rgb[2];
+          out[o++] = p.rgbDark[0];
+          out[o++] = p.rgbDark[1];
+          out[o++] = p.rgbDark[2];
           out[o++] = p.flutterP;
         }
       }

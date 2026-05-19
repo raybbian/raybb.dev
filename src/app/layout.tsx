@@ -5,10 +5,11 @@ import FishBackground from "@/components/FishBackground";
 import NavDrawer from "@/components/NavDrawer";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Analytics } from "@vercel/analytics/next";
+import Script from "next/script";
 
-// Runs before the body paints so `data-theme` is set for the first paint
-// (avoids a flash of the wrong theme).
-const themeBootstrap = `try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme='light';}`;
+// /public/theme-bootstrap.js sets `data-theme` before the body paints
+// (avoids a flash of the wrong theme). Loaded as an external file rather
+// than inline so React never has to render a <script> node.
 
 const rubik = Rubik({
   variable: "--font-geist-sans",
@@ -38,10 +39,8 @@ export default function RootLayout({
       className={`${rubik.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-      </head>
       <body className="flex min-h-full flex-col">
+        <Script src="/theme-bootstrap.js" strategy="beforeInteractive" />
         <FishBackground />
         <NavDrawer />
         {children}

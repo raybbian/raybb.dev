@@ -10,8 +10,7 @@ export const experience: Experience[] = [
     company: "Jane Street",
     role: "Incoming SWE intern",
     period: "Summer 2026",
-    description:
-      "Improving market liquidity.",
+    description: "Providing market liquidity.",
   },
   {
     company: "GEICO",

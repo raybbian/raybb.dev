@@ -2,7 +2,9 @@
 precision mediump float;
 in vec2 v_local;  // A=(0,-1) base-, B=(0,1) base+, C=(1,0) tip
 in vec3 v_color;
+in vec3 v_colorDark;
 in float v_seed;
+uniform float u_theme; // 0 = dark pond, 1 = light pond (eased on theme change)
 out vec4 o;
 
 // "Squircle for a triangle": blending the triangle SDF toward a circle SDF
@@ -43,7 +45,7 @@ void main() {
   // jitter so neighbours don't read as one flat mass.
   float along = clamp(v_local.x, 0.0, 1.0);
   float jitter = 1.0 + (sin(v_seed) * 0.5) * 0.06;
-  vec3 c = v_color * jitter;
+  vec3 c = mix(v_colorDark, v_color, u_theme) * jitter;
   float sat = mix(1.0, TIP_SAT, smoothstep(TIP_START, 1.0, along));
   float luma = dot(c, vec3(0.299, 0.587, 0.114));
   c = mix(vec3(luma), c, sat);
