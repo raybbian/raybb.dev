@@ -4,7 +4,7 @@ export default function Hero() {
   return (
     <section
       id="home"
-      className="flex min-h-[100dvh] snap-start flex-col items-center justify-center px-6 text-center"
+      className="flex min-h-[100svh] snap-start flex-col items-center justify-center px-6 text-center"
     >
       <h1 className="text-5xl font-bold tracking-tight text-white [filter:drop-shadow(0_3px_14px_rgba(0,0,0,0.5))] sm:text-7xl">
         <span className="hero-word inline-block" style={{ animationDelay: "0ms" }}>

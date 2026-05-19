@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { sections } from "@/content/profile";
@@ -15,6 +15,9 @@ export default function NavDrawer() {
   const [section, setSection] = useState("home");
   const pathname = usePathname();
   const router = useRouter();
+  // Cancels the pending scroll-snap restore from a prior in-flight nav scroll
+  // (re-entrancy + unmount cleanup). null when nothing is pending.
+  const snapRestoreRef = useRef<(() => void) | null>(null);
 
   // "blog" on blog routes, otherwise the section in view.
   const active = pathname.startsWith("/blog") ? "blog" : section;
@@ -32,20 +35,42 @@ export default function NavDrawer() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("koi:section", onSection);
       window.removeEventListener("hashchange", onHash);
+      snapRestoreRef.current?.(); // restore snap if we unmount mid-scroll
     };
   }, []);
 
   const goToSection = (id: string) => {
     setOpen(false);
-    if (pathname === "/") {
-      const el = document.getElementById(id);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-        history.replaceState(null, "", id === "home" ? "/" : `/#${id}`);
-      }
-    } else {
+    if (pathname !== "/") {
       router.push(id === "home" ? "/" : `/#${id}`);
+      return;
     }
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    // iOS Safari aborts a JS-initiated smooth scroll and re-snaps to the
+    // origin if scroll-snap is active during it. Suspend snap for the scroll,
+    // then restore it once the page settles. `scrollend` lands it precisely
+    // (Safari 17.4+); the timer is the fallback for older WebKit. Either path
+    // runs restore() exactly once and cancels the other.
+    snapRestoreRef.current?.(); // cancel a prior in-flight restore, re-arm
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("scroll-snap-type", "none");
+    let done = false;
+    const restore = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("scrollend", restore);
+      clearTimeout(timer);
+      rootStyle.removeProperty("scroll-snap-type"); // back to the stylesheet's proximity
+      snapRestoreRef.current = null;
+    };
+    const timer = setTimeout(restore, 700);
+    window.addEventListener("scrollend", restore, { once: true });
+    snapRestoreRef.current = restore;
+
+    el.scrollIntoView({ behavior: "smooth" });
+    history.replaceState(null, "", id === "home" ? "/" : `/#${id}`);
   };
 
   return (

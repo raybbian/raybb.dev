@@ -18,7 +18,7 @@ export default function Section({
   return (
     <section
       id={id}
-      className="flex min-h-[100dvh] snap-start flex-col justify-center py-24"
+      className="flex min-h-[100svh] snap-start flex-col justify-center py-24"
     >
       <div className={full ? "" : "mx-auto w-full max-w-3xl px-6"}>
         <div className={full ? "mx-auto w-full max-w-3xl px-6" : ""}>

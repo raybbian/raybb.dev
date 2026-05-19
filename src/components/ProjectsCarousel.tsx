@@ -100,8 +100,20 @@ export default function ProjectsCarousel() {
     let lastX = 0;
     let lastT = 0;
     let vx = 0;
+    let pointerId: number | null = null;
     const onDown = (e: PointerEvent) => {
+      // Touch/pen use native pan-x scrolling + CSS mandatory snap (smooth
+      // momentum, and iOS fires pointercancel not pointerup when it claims the
+      // horizontal pan, which would otherwise strand `down`). JS drag is
+      // mouse-only.
+      if (e.pointerType !== "mouse") return;
       down = true;
+      pointerId = e.pointerId;
+      // Keep move/up flowing even when the cursor passes over a card's
+      // Cloudflare Stream <iframe>, which would otherwise swallow them.
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {}
       if (autoTimer.current) window.clearTimeout(autoTimer.current);
       startX = e.clientX;
       startLeft = el.scrollLeft;
@@ -110,6 +122,13 @@ export default function ProjectsCarousel() {
       lastT = performance.now();
       vx = 0;
       el.style.scrollSnapType = "none";
+    };
+    const releaseCapture = () => {
+      if (pointerId === null) return;
+      try {
+        el.releasePointerCapture(pointerId);
+      } catch {}
+      pointerId = null;
     };
     const onMove = (e: PointerEvent) => {
       if (!down) return;
@@ -123,6 +142,7 @@ export default function ProjectsCarousel() {
     const onUp = () => {
       if (!down) return;
       down = false;
+      releaseCapture();
       const fc = el.firstElementChild as HTMLElement | null;
       const step = fc ? fc.offsetWidth + 20 : 320; // 20px = gap-5
       const moved = el.scrollLeft - startLeft;
@@ -142,20 +162,33 @@ export default function ProjectsCarousel() {
       // Restore CSS mandatory snap once the smooth scroll lands; sooner would
       // let the browser fight the in-flight scrollBy. Skip if a new drag
       // started before we settled — its onDown re-applied snap=none and its
-      // onUp will queue a fresh restorer.
-      el.addEventListener(
-        "scrollend",
-        () => {
-          if (down) return;
-          el.style.scrollSnapType = "";
-        },
-        { once: true },
-      );
+      // onUp will queue a fresh restorer. The timer is a fallback for browsers
+      // without `scrollend` (older desktop Safari) so snap is never stranded.
+      let restored = false;
+      const restoreSnap = () => {
+        if (restored || down) return;
+        restored = true;
+        el.removeEventListener("scrollend", restoreSnap);
+        clearTimeout(snapTimer);
+        el.style.scrollSnapType = "";
+      };
+      const snapTimer = setTimeout(restoreSnap, 700);
+      el.addEventListener("scrollend", restoreSnap, { once: true });
       schedule(); // hold here for a full interval before auto-advancing
+    };
+    // iOS/native pan or any interrupted gesture: settle state so `down` and
+    // the suspended snap never get stranded.
+    const onCancel = () => {
+      if (!down) return;
+      down = false;
+      releaseCapture();
+      el.style.scrollSnapType = "";
+      schedule();
     };
     el.addEventListener("pointerdown", onDown);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
 
     // Native CSS mandatory snap handles wheel/touchpad scrolling. When any
     // scroll settles (wheel, button, auto-advance), reset the countdown so
@@ -173,6 +206,7 @@ export default function ProjectsCarousel() {
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
       el.removeEventListener("scrollend", onScrollEnd);
       el.style.scrollSnapType = "";
     };
