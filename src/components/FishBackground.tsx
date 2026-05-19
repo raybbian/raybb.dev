@@ -54,6 +54,14 @@ const SCARE_DUR = 0.7; // s a poke keeps scaring fish from that spot
 const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
 
+// The pond is a full-bleed background, so it must size to the *large* viewport
+// and stay put. `documentElement.client{Width,Height}` is the layout viewport:
+// on mobile it's the stable large size that doesn't shrink when the URL/tab
+// bar collapses, unlike `window.inner*`. Sizing off it keeps the canvas full
+// behind the bars and avoids a debounced reseed on every bar toggle.
+const viewportW = () => document.documentElement.clientWidth;
+const viewportH = () => document.documentElement.clientHeight;
+
 export default function FishBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
@@ -91,8 +99,8 @@ export default function FishBackground() {
     }
     const glPerf = instrumentGl(gl);
 
-    let width = window.innerWidth;
-    let height = window.innerHeight;
+    let width = viewportW();
+    let height = viewportH();
     const seed = (Math.random() * 2 ** 32) >>> 0;
     const rng = mulberry32(seed);
 
@@ -216,8 +224,8 @@ export default function FishBackground() {
 
     // Realloc GL buffers and rebuild the scene at the new screenScale.
     const applyResize = () => {
-      const nextW = window.innerWidth;
-      const nextH = window.innerHeight;
+      const nextW = viewportW();
+      const nextH = viewportH();
       // ResizeObserver fires on observe() and on scrollbar/content changes
       // too; only an actual viewport change warrants the realloc + reseed.
       if (nextW === width && nextH === height) return;

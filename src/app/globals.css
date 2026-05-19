@@ -31,8 +31,10 @@ html {
   background: #2f8a86;
   scroll-behavior: smooth;
   /* Sections opt in via `snap-start`; pages without snap points (blog)
-     scroll normally. */
-  scroll-snap-type: y mandatory;
+     scroll normally. `proximity` (not `mandatory`): iOS Safari's snap engine
+     aborts JS-initiated smooth scrolls under `mandatory` and re-snaps to the
+     origin, so `scrollIntoView` from the nav drawer visibly bounces back. */
+  scroll-snap-type: y proximity;
 }
 
 .no-scrollbar {
