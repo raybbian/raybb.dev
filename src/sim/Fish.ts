@@ -509,8 +509,8 @@ export class Fish {
     const { base: BASE, fin: FIN } = this.colors;
     const vbuf = this.vbuf;
     const ibuf = this.ibuf;
-    let vLen = 0; // floats written into vbuf
-    let iLen = 0; // indices written into ibuf
+    let vLen = 0;
+    let iLen = 0;
 
     // `uv` rides index-aligned with `ring`; absent -> NO_UV (flat fin).
     const emit = (ring: Vec2[], color: Rgba, uv?: Vec2[]) => {

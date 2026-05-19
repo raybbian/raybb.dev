@@ -2,32 +2,9 @@ export const metadata = {
   title: "Building a Procedural Koi Pond in WebGL",
   date: "2026-05-17",
   description:
-    "A placeholder post — notes on spring-driven spines, refraction, and why nothing here is pre-baked.",
+    "Technical outline of the fish background — spring spines, baked pattern textures, MRT water passes, premultiplied RG8 shadow masks, and infinite-band streaming.",
 };
 
 # Building a Procedural Koi Pond in WebGL
 
-> Placeholder content. This post exists to exercise the MDX pipeline and the
-> shared typography components.
-
-Every koi on this site is a **spring-driven spine** wrapped in a Catmull-Rom
-body. No sprites, no rigs — just math resolved every frame.
-
-## Some observations
-
-A few things that made the pond feel alive:
-
-- The water is captured into a multisampled buffer, then refracted in a single
-  composite pass.
-- Shadows use a premultiplied RG8 mask with painter-ordered casters.
-- The pond drifts at a fraction of the page scroll speed for a slow parallax.
-
-## A snippet
-
-```ts
-function ripple(t: number) {
-  return Math.sin(t) * Math.exp(-t * 0.5);
-}
-```
-
-That's it for now — more to come.
+TODO

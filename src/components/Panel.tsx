@@ -11,7 +11,7 @@ export default function Panel({
 }) {
   return (
     <Tag
-      className={`rounded-2xl border border-white/15 bg-white/10 shadow-lg shadow-black/10 backdrop-blur-md ${className}`}
+      className={`frost rounded-2xl shadow-lg shadow-black/10 dark:shadow-black/30 ${className}`}
     >
       {children}
     </Tag>

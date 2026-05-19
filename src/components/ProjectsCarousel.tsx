@@ -5,8 +5,7 @@ import { FaChevronLeft, FaChevronRight } from "react-icons/fa6";
 import { projects } from "@/content/projects";
 import ProjectCard from "./ProjectCard";
 
-// Auto-advance cadence: one project per this interval.
-const STEP_MS = 4500;
+const STEP_MS = 4500; // auto-advance: one project per interval
 
 export default function ProjectsCarousel() {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -67,10 +66,9 @@ export default function ProjectsCarousel() {
       });
     };
 
-    // Auto-advance: discrete snap to the next project, then loop back to the
-    // start — identical to pressing the next button on a timer. Any
-    // interaction (drag/wheel/button) restarts the countdown via schedule(),
-    // so it holds on the card you landed on for a full interval.
+    // Auto-advance: snap to the next project, looping back to the start. Any
+    // interaction restarts the countdown via schedule() so it holds on the
+    // landed card for a full interval.
     let down = false;
     const advance = () => {
       if (down) return;
@@ -93,9 +91,9 @@ export default function ProjectsCarousel() {
     resetAuto.current = schedule;
     schedule();
 
-    // Pointer drag-to-scroll. CSS scroll-snap is intentionally off; a JS
-    // target (velocity- and distance-aware) decides the destination pane on
-    // release.
+    // Pointer drag-to-scroll. CSS mandatory snap is suspended during the
+    // drag so direct scrollLeft writes aren't fought; a JS target (velocity-
+    // and distance-aware) decides the destination pane on release.
     let startX = 0;
     let startLeft = 0;
     let startIdx = 0;
@@ -111,6 +109,7 @@ export default function ProjectsCarousel() {
       lastX = e.clientX;
       lastT = performance.now();
       vx = 0;
+      el.style.scrollSnapType = "none";
     };
     const onMove = (e: PointerEvent) => {
       if (!down) return;
@@ -140,24 +139,33 @@ export default function ProjectsCarousel() {
         target = startIdx + dir * steps;
       }
       alignChild(target, true);
+      // Restore CSS mandatory snap once the smooth scroll lands; sooner would
+      // let the browser fight the in-flight scrollBy. Skip if a new drag
+      // started before we settled — its onDown re-applied snap=none and its
+      // onUp will queue a fresh restorer.
+      el.addEventListener(
+        "scrollend",
+        () => {
+          if (down) return;
+          el.style.scrollSnapType = "";
+        },
+        { once: true },
+      );
       schedule(); // hold here for a full interval before auto-advancing
     };
     el.addEventListener("pointerdown", onDown);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
 
-    // Wheel/touchpad horizontal scroll: native scrolling handles the motion;
-    // we snap to the nearest pane once it settles, then restart the timer.
-    let wheelTimer: number | null = null;
-    const onWheel = () => {
-      if (autoTimer.current) window.clearTimeout(autoTimer.current);
-      if (wheelTimer) window.clearTimeout(wheelTimer);
-      wheelTimer = window.setTimeout(() => {
-        alignChild(nearestIndex(), true);
-        schedule();
-      }, 60);
+    // Native CSS mandatory snap handles wheel/touchpad scrolling. When any
+    // scroll settles (wheel, button, auto-advance), reset the countdown so
+    // the landed card gets a full interval. Skip while a drag is in flight —
+    // its scrollLeft writes can fire scrollend mid-drag.
+    const onScrollEnd = () => {
+      if (down) return;
+      schedule();
     };
-    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("scrollend", onScrollEnd);
 
     return () => {
       if (autoTimer.current) window.clearTimeout(autoTimer.current);
@@ -165,8 +173,8 @@ export default function ProjectsCarousel() {
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      el.removeEventListener("wheel", onWheel);
-      if (wheelTimer) window.clearTimeout(wheelTimer);
+      el.removeEventListener("scrollend", onScrollEnd);
+      el.style.scrollSnapType = "";
     };
   }, []);
 
@@ -182,7 +190,7 @@ export default function ProjectsCarousel() {
   };
 
   const arrowClass =
-    "absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-white/10 text-base text-white backdrop-blur-md transition-all duration-300 hover:bg-white/20";
+    "frost absolute top-1/2 z-10 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-base text-white transition-all duration-300 hover:bg-white/30 dark:hover:bg-black/50";
   const hidden = "pointer-events-none opacity-0";
 
   return (
@@ -207,15 +215,18 @@ export default function ProjectsCarousel() {
       </button>
       <div
         ref={ref}
-        className="no-scrollbar flex touch-pan-x gap-5 overflow-x-auto overscroll-x-contain"
+        className="no-scrollbar flex touch-pan-x snap-x snap-mandatory gap-5 overflow-x-auto overscroll-x-contain"
         style={{
           cursor: "grab",
           // Bound the first/last card to the site's content column (max-w-3xl
           // = 48rem, + the 1.5rem heading gutter) so the strip lines up with
-          // the section heading. JS (containerStart) reads this as the snap
-          // anchor. The scroller still spans full width, so mid cards bleed to
-          // the borders and nothing is clipped.
+          // the section heading. scrollPaddingInline must match so the
+          // `snap-start` line sits on the same content-column edge that JS
+          // (containerStart) reads back. The scroller still spans full width,
+          // so mid cards bleed to the borders and nothing is clipped.
           paddingInline: "max(1.5rem, calc((100vw - 48rem) / 2 + 1.5rem))",
+          scrollPaddingInline:
+            "max(1.5rem, calc((100vw - 48rem) / 2 + 1.5rem))",
         }}
       >
         {projects.map((project) => (
@@ -223,7 +234,7 @@ export default function ProjectsCarousel() {
             key={project.name}
             // Cap height so the 3:4 width never exceeds ~80vw — keeps edge
             // space on narrow/mobile screens (width = height * 3/4).
-            className="aspect-[3/4] h-[min(clamp(20rem,62vh,34rem),106vw)] shrink-0 select-none"
+            className="aspect-[3/4] h-[min(clamp(20rem,62vh,34rem),106vw)] shrink-0 snap-start select-none"
           >
             <ProjectCard project={project} />
           </div>

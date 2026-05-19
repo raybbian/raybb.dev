@@ -48,13 +48,13 @@ export default function ProjectCard({ project }: { project: Project }) {
       ref={cardRef}
       onMouseEnter={project.video ? onEnter : undefined}
       onMouseLeave={project.video ? onLeave : undefined}
-      className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/15 bg-white/10 shadow-lg shadow-black/10 backdrop-blur-md"
+      className="frost flex h-full flex-col overflow-hidden rounded-2xl shadow-lg shadow-black/10 dark:shadow-black/30"
     >
       {/* Cover video when available; letter placeholder keeps the 3:4 pane
           balanced otherwise. */}
       <div
         onClick={project.video ? onToggle : undefined}
-        className={`relative flex h-2/5 items-center justify-center overflow-hidden border-b border-white/10 bg-gradient-to-br from-white/10 to-transparent${
+        className={`relative flex h-2/5 items-center justify-center overflow-hidden border-b border-white/15 bg-gradient-to-br from-white/15 to-transparent dark:border-white/10 dark:from-white/10${
           project.video ? " cursor-pointer" : ""
         }`}
       >
@@ -68,7 +68,9 @@ export default function ProjectCard({ project }: { project: Project }) {
             preload="auto"
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
-            className="absolute inset-0 h-full w-full [&_iframe]:h-full [&_iframe]:w-full"
+            className={`absolute inset-0 h-full w-full transition-[filter] duration-300 [&_iframe]:h-full [&_iframe]:w-full ${
+              playing ? "" : "brightness-[0.85]"
+            }`}
           />
         ) : (
           <span className="text-4xl font-bold text-white/30">
@@ -119,7 +121,7 @@ export default function ProjectCard({ project }: { project: Project }) {
                 href={project.github}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/20"
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white/90 transition-colors hover:bg-white/25 dark:bg-white/10 dark:text-white/80 dark:hover:bg-white/20"
               >
                 <FaGithub /> Code
               </a>

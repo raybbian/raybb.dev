@@ -1,8 +1,30 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* Shared frosted-glass surface. Consumers add their own radius/padding/hover.
+   The transition makes theme-swap ride the same 250ms color animation as
+   consumers' hover transitions. */
+@utility frost {
+  @apply border border-white/25 bg-white/20 backdrop-blur-md;
+  @apply dark:border-white/10 dark:bg-black/35;
+  transition:
+    background-color 250ms ease,
+    border-color 250ms ease;
+}
+
+/* Stronger blur for full-height panels like the side drawer. */
+@utility frost-strong {
+  @apply border border-white/25 bg-white/20 backdrop-blur-xl;
+  @apply dark:border-white/10 dark:bg-black/40;
+  transition:
+    background-color 250ms ease,
+    border-color 250ms ease;
 }
 
 html {

@@ -16,8 +16,7 @@ export default function NavDrawer() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // "blog" on blog routes, otherwise the section in view. Derived in render;
-  // `section` is only mutated from event callbacks (no setState in effects).
+  // "blog" on blog routes, otherwise the section in view.
   const active = pathname.startsWith("/blog") ? "blog" : section;
 
   useEffect(() => {
@@ -54,7 +53,7 @@ export default function NavDrawer() {
       <button
         aria-label={open ? "Close menu" : "Open menu"}
         onClick={() => setOpen((v) => !v)}
-        className="fixed right-5 top-5 z-50 grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-white/10 backdrop-blur-md transition-colors hover:bg-white/20"
+        className="frost fixed right-5 top-5 z-50 grid h-11 w-11 place-items-center rounded-full transition-colors hover:bg-white/30 dark:hover:bg-black/50"
       >
         <span className="relative block h-4 w-5">
           <span
@@ -83,7 +82,7 @@ export default function NavDrawer() {
       />
 
       <nav
-        className={`fixed right-0 top-0 z-40 flex h-full w-72 max-w-[80vw] flex-col gap-0.5 border-l border-white/15 bg-white/10 px-5 pt-20 backdrop-blur-xl transition-transform duration-300 ${
+        className={`frost-strong fixed right-0 top-0 z-40 flex h-full w-72 max-w-[80vw] flex-col gap-0.5 border-y-0 border-r-0 px-5 pt-20 transition-transform duration-300 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -92,9 +91,9 @@ export default function NavDrawer() {
             key={s.id}
             onClick={() => goToSection(s.id)}
             aria-current={active === s.id ? "true" : undefined}
-            className={`rounded-lg px-3 py-2 text-left text-xl font-semibold transition-colors hover:bg-white/10 hover:text-white ${
+            className={`rounded-lg px-3 py-2 text-left text-xl font-semibold transition-colors hover:bg-white/15 hover:text-white dark:hover:bg-white/10 ${
               active === s.id
-                ? "bg-white/10 text-white"
+                ? "bg-white/15 text-white dark:bg-white/10"
                 : "text-white/80"
             }`}
           >

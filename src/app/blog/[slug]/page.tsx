@@ -34,7 +34,7 @@ export default async function BlogPost({
     <main className="mx-auto w-full max-w-3xl px-6 py-28">
       <Link
         href="/"
-        className="fixed left-5 top-5 z-50 rounded-full border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium text-white/80 backdrop-blur-md transition-colors hover:bg-white/20 hover:text-white"
+        className="frost fixed left-5 top-5 z-50 rounded-full px-4 py-2.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/30 hover:text-white dark:text-white/80 dark:hover:bg-black/50"
       >
         ← Home
       </Link>

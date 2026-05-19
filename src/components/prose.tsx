@@ -1,7 +1,7 @@
 import { AnchorHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 
-// Shared typography primitives. Used directly in page sections and mapped from
-// markdown elements in mdx-components.tsx so blog and site stay consistent.
+// Shared typography primitives. Used directly in page sections and mapped
+// from markdown elements in mdx-components.tsx so blog and site stay consistent.
 
 export function H1({ children, ...p }: HTMLAttributes<HTMLHeadingElement>) {
   return (
@@ -112,7 +112,7 @@ export function Code({ children, ...p }: HTMLAttributes<HTMLElement>) {
 export function Pre({ children, ...p }: HTMLAttributes<HTMLPreElement>) {
   return (
     <pre
-      className="my-6 overflow-x-auto rounded-xl border border-white/15 bg-black/40 p-4 text-sm leading-relaxed text-white/90 backdrop-blur-sm"
+      className="my-6 overflow-x-auto rounded-xl border border-white/25 bg-black/40 p-4 text-sm leading-relaxed text-white/90 backdrop-blur-sm dark:border-white/10 dark:bg-black/50"
       {...p}
     >
       {children}

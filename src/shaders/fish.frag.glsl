@@ -5,7 +5,7 @@ in vec2 v_uv;
 uniform sampler2D u_pattern; // koi body pattern, baked once (see pattern.frag)
 uniform float u_depth;       // this fish's submergence, 0..1 (>0 = "fish here")
 uniform highp vec2 u_res; // logical px (shared w/ vertex stage -> match highp)
-uniform vec2 u_fragRes;   // drawing-buffer px (canvas.width/height)
+uniform vec2 u_fragRes;   // drawing-buffer px
 #include "shadow.glsl"
 layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 o_depth; // R = submergence for the water pass

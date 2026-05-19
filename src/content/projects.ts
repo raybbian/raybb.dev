@@ -2,9 +2,7 @@ export type Project = {
   name: string;
   description: string;
   tech: string[];
-  // live demo / play / site
   link?: string;
-  // source repository
   github?: string;
   // Cloudflare Stream video UID for the card cover
   video?: string;

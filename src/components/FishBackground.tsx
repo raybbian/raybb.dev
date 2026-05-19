@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Fish } from "@/sim/Fish";
 import { FishRenderer } from "@/render/FishRenderer";
@@ -27,13 +27,19 @@ const MAX_DPR = 2;
 const DPR_FALLBACK = 1;
 // Adaptive internal-resolution scale for the heavy offscreen passes (shadow,
 // scene, water composite). The canvas and the crisp top layer stay full-res;
-// only fill cost scales (~RENDER_SCALE^2). Re-tuned each second toward a 60fps
-// budget, clamped so it never up-samples nor drops below half resolution.
+// only fill cost scales (~RENDER_SCALE^2). Each second is classified as either
+// at-budget (60fps) or below. Over ADAPT_WINDOW_COUNT consecutive seconds: all
+// at 60fps upscales, all below 60fps downscales, and any mix holds the current
+// scale. Clamped so it never up-samples nor drops below half resolution.
 const RENDER_SCALE_MIN = 0.5;
 const RENDER_SCALE_MAX = 1;
 const RENDER_SCALE_STEP = 0.1;
 const FRAME_BUDGET_MS = 1000 / 60;
 const ADAPT_INTERVAL_MS = 1000;
+const ADAPT_WINDOW_COUNT = 5;
+// A single second below this fraction of target FPS demotes immediately,
+// without waiting for the full ADAPT_WINDOW_COUNT block.
+const ADAPT_PANIC_FRAC = 0.8;
 const DT_CLAMP_S = 0.1; // cap dt so a backgrounded tab doesn't teleport
 // Pond is a tall virtual scene; only a viewport slice is drawn. Height is a
 // fraction of page content, so it scrolls slower than the page.
@@ -42,9 +48,6 @@ const REF_WIDTH = 1440; // viewport width at which sizes are 1x
 const SCREEN_SCALE_MIN = 0.6;
 const SCREEN_SCALE_MAX = 1.4;
 const RESIZE_DEBOUNCE_MS = 150;
-// Frames the camera holds still after a route change so Next's post-nav
-// scroll reset is absorbed whenever it lands (~200ms; imperceptible).
-const NAV_SETTLE_FRAMES = 12;
 const MOUSE_FAST_PXS = 650; // cursor px/s above which fish flee
 const SCARE_DUR = 0.7; // s a poke keeps scaring fish from that spot
 
@@ -56,25 +59,25 @@ export default function FishBackground() {
   const perfRef = useRef<HTMLDivElement>(null);
   const [showPerf, setShowPerf] = useState(false);
   const pathname = usePathname();
-  // Detect route changes during render, NOT in an effect: Next resets
-  // window.scrollY around the navigation commit at a time that isn't ordered
-  // relative to our rAF loop, so an effect-based flag races the loop and the
-  // scene snaps non-deterministically. A ref diff in render is guaranteed set
-  // before the next frame; the settle window (consumed in the loop) then
-  // absorbs the scroll reset whenever it actually lands.
-  const lastPathRef = useRef(pathname);
-  const navSettleRef = useRef(0);
-  if (lastPathRef.current !== pathname) {
-    lastPathRef.current = pathname;
-    navSettleRef.current = NAV_SETTLE_FRAMES;
-  }
+  // Arm a one-shot rebase on every route change. useLayoutEffect runs in the
+  // commit phase (before paint / scroll events / rAF), so the flag is set
+  // before Next's post-nav scroll handler fires (instant scrollTop=0 or smooth
+  // scrollIntoView). The scroll listener consumes it exactly when scrollY
+  // moves, so the rebase lands in lockstep instead of guessing at a timeout.
+  const rebasePendingRef = useRef(false);
+  const firstPathRunRef = useRef(true);
+  useLayoutEffect(() => {
+    if (firstPathRunRef.current) {
+      firstPathRunRef.current = false;
+      return;
+    }
+    rebasePendingRef.current = true;
+  }, [pathname]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Context MSAA antialiases the fish silhouette; the body pattern keeps its
-    // own fwidth-based edge AA.
     // antialias:false: every visible layer renders to an offscreen MSAA
     // target or has its own fwidth/SDF edge AA, so a multisampled default
     // backbuffer (+ its implicit resolve) only wastes bandwidth.
@@ -109,10 +112,8 @@ export default function FishBackground() {
     const renderer = new FishRenderer(gl);
     renderer.setPalettes(palettes);
 
-    // Rebuilt on resize so the school rescales with the pond. Uses the stable
-    // `palettes` (created once, kept in sync with the renderer) and the
-    // current closure values of sceneW/height/screenScale. Fish spawn in the
-    // initial visible window; edge avoidance keeps them on screen thereafter.
+    // Rebuilt on resize so the school rescales with the pond. Fish spawn in
+    // the initial visible window; edge avoidance keeps them on screen after.
     const makeFishes = () =>
       palettes.map((p, i) => {
         const scale =
@@ -160,11 +161,12 @@ export default function FishBackground() {
     let ripples = new Ripples(screenScale);
     const mouse = { x: width / 2, y: height / 2 };
     const prevMouse = { x: width / 2, y: height / 2 };
-    // Camera into the infinite pond (logical px). worldY is a PURE function
-    // of window.scrollY (worldY = anchor + scrollY*P), so scrolling is exactly
-    // reversible — no integrator drift, the same scroll position always shows
-    // the same scene. `anchor` is rebased across navigation (during the settle
-    // window) so the scene stays continuous when Next resets scrollY.
+    // Camera into the infinite pond (logical px). worldY is a pure function
+    // of window.scrollY (= anchor + scrollY*P), so scrolling is exactly
+    // reversible — no integrator drift. `anchor` is rebased once per route
+    // change (in the scroll listener, first time scrollY moves after commit)
+    // to pin worldY to its current value so the scene stays visually
+    // continuous across the post-nav scroll.
     let anchor = 0;
     let worldY = 0;
 
@@ -196,26 +198,23 @@ export default function FishBackground() {
     };
     sizeCanvas();
 
-    // Per-frame: advance the camera by the scroll delta with a fixed,
-    // page-independent parallax. On a route change Next resets scrollY; the
-    // rebase flag makes us absorb that step instead of snapping. A
-    // non-scrollable page just freezes worldY (no delta).
     const recomputeScroll = () => {
-      const sy = window.scrollY;
-      // Post-navigation settle: hold worldY at its pre-nav value and re-derive
-      // the anchor against the (possibly resetting) scrollY, so Next's scroll
-      // reset is absorbed whenever it lands and the pure mapping then resumes
-      // seamlessly instead of snapping.
-      if (navSettleRef.current > 0) {
-        navSettleRef.current--;
-        anchor = worldY - sy * SCENE_FRACTION;
-        return;
-      }
-      worldY = Math.max(0, anchor + sy * SCENE_FRACTION);
+      worldY = Math.max(0, anchor + window.scrollY * SCENE_FRACTION);
     };
 
-    // Debounced: realloc GL buffers and rebuild the scene (fish + decorations)
-    // at the new screenScale so everything rescales with the viewport.
+    // Scroll events fire before rAF in the same frame, so consuming the flag
+    // here guarantees the new anchor is set before recomputeScroll reads
+    // scrollY. If pathname changes without scrollY movement (e.g. /blog →
+    // /blog/[slug] both at sy=0) the flag stays armed until the next real
+    // scroll — harmless, since worldY is unchanged.
+    const onScroll = () => {
+      if (!rebasePendingRef.current) return;
+      rebasePendingRef.current = false;
+      anchor = worldY - window.scrollY * SCENE_FRACTION;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    // Realloc GL buffers and rebuild the scene at the new screenScale.
     const applyResize = () => {
       const nextW = window.innerWidth;
       const nextH = window.innerHeight;
@@ -301,30 +300,45 @@ export default function FishBackground() {
     // Adaptive-quality window: runs regardless of the perf overlay.
     let adaptFrames = 0;
     let adaptLast = last;
+    // Rolling block of ADAPT_WINDOW_COUNT 1s windows: how many we've seen and
+    // how many of those met the 60fps budget. A unanimous block (all met or
+    // all missed) steps the scale; a mixed block holds it.
+    let adaptWindows = 0;
+    let adaptInBudget = 0;
     const frame = (now: number) => {
       const cpuStart = performance.now();
       const dt = Math.min((now - last) / 1000, DT_CLAMP_S);
       last = now;
       fpsFrames++;
       adaptFrames++;
-      // Steer renderScale toward the 60fps budget. Asymmetric dead band
-      // (down past budget, up only with comfortable headroom) + a
-      // re-quantize keeps it from oscillating between two steps.
+      // The rAF interval is vsync-floored at the display refresh, so
+      // "avg interval <= budget" means we're meeting the display's natural
+      // cadence. Act only once a full ADAPT_WINDOW_COUNT block is in (mix
+      // holds, so blips don't ping-pong); a single second below
+      // ADAPT_PANIC_FRAC of target FPS bypasses the block and demotes now.
       if (now - adaptLast >= ADAPT_INTERVAL_MS) {
         const avgMs = (now - adaptLast) / adaptFrames;
-        let next = renderScale;
-        if (avgMs > FRAME_BUDGET_MS * 1.05)
-          next = renderScale - RENDER_SCALE_STEP;
-        else if (avgMs < FRAME_BUDGET_MS * 0.8)
-          next = renderScale + RENDER_SCALE_STEP;
-        next =
-          Math.round(
-            clamp(next, RENDER_SCALE_MIN, RENDER_SCALE_MAX) /
-              RENDER_SCALE_STEP,
-          ) * RENDER_SCALE_STEP;
-        if (next !== renderScale) {
-          renderScale = next;
-          resizeTargets();
+        const panic = avgMs > FRAME_BUDGET_MS / ADAPT_PANIC_FRAC;
+        if (avgMs <= FRAME_BUDGET_MS * 1.05) adaptInBudget++;
+        adaptWindows++;
+        if (panic || adaptWindows >= ADAPT_WINDOW_COUNT) {
+          let next = renderScale;
+          if (panic || adaptInBudget === 0) {
+            next = renderScale - RENDER_SCALE_STEP;
+          } else if (adaptInBudget === ADAPT_WINDOW_COUNT) {
+            next = renderScale + RENDER_SCALE_STEP;
+          }
+          next =
+            Math.round(
+              clamp(next, RENDER_SCALE_MIN, RENDER_SCALE_MAX) /
+                RENDER_SCALE_STEP,
+            ) * RENDER_SCALE_STEP;
+          if (next !== renderScale) {
+            renderScale = next;
+            resizeTargets();
+          }
+          adaptWindows = 0;
+          adaptInBudget = 0;
         }
         adaptFrames = 0;
         adaptLast = now;
@@ -491,6 +505,7 @@ export default function FishBackground() {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll);
       ro.disconnect();
       renderer.dispose();
       lpRenderer.dispose();

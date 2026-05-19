@@ -11,7 +11,7 @@ export const experience: Experience[] = [
     role: "Incoming SWE intern",
     period: "Summer 2026",
     description:
-      "Joining the SWE intern cohort for Summer 2026.",
+      "Improving market liquidity.",
   },
   {
     company: "GEICO",
@@ -25,6 +25,6 @@ export const experience: Experience[] = [
     role: "Undergraduate Researcher",
     period: "Aug 2024 – May 2025",
     description:
-      "Developed ground operations software and systems for the NASA-partnered GPDM cubesat.",
+      "Developed ground ops software for the NASA-partnered GPDM cubesat.",
   },
 ];

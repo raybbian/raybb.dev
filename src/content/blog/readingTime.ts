@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-// Server-only (build-time SSG). Estimates minutes from the raw .mdx source,
-// stripping the metadata export and code fences for a rough word count.
+// Server-only (build-time SSG). Strips the metadata export and code fences
+// from the raw .mdx for a rough word count.
 export function readingTimeMinutes(slug: string): number {
   const file = path.join(process.cwd(), "src/content/blog", `${slug}.mdx`);
   const raw = readFileSync(file, "utf8");

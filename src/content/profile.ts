@@ -3,8 +3,7 @@ export const profile = {
   fullName: "Raymond Bian",
   greeting: "Hi, I'm",
   subtitle:
-    "CS & Math @ Georgia Tech. I build games, systems software, and procedurally animated things — like the koi swimming behind this page.",
-  bio: "Computer Science and Math major at the Georgia Institute of Technology. Incoming SWE intern at Jane Street; previously interned at GEICO and researched ground software for the NASA-partnered GPDM cubesat. Into competitive programming, game development, and making cool stuff.",
+    "I'm an incoming masters CS student @ Georgia Tech. I make games, build software, and am generally interested in solving problems with code.",
   socials: {
     github: "https://github.com/raybbian",
     linkedin: "https://linkedin.com/in/raybbian",

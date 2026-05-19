@@ -30,6 +30,11 @@ export class Chain {
   }
 
   resolve(pos: Vec2): void {
+    // Zero-movement update would set angles[0] = atan2(0,0) = 0, snapping
+    // the whole chain toward "right" and bypassing the caller's per-tick
+    // turn cap. Happens whenever a frame's dt rounds to 0 (RAF jitter,
+    // backlog after heavy CSS like theme toggles / sidebar transitions).
+    if (pos.x === this.joints[0].x && pos.y === this.joints[0].y) return;
     this.angles[0] = heading(sub(pos, this.joints[0]));
     this.joints[0] = { ...pos };
     for (let i = 1; i < this.joints.length; i++) {
