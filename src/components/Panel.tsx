@@ -1,17 +1,20 @@
-import { ElementType, ReactNode } from "react";
+import { ElementType, HTMLAttributes, ReactNode } from "react";
+
+type PanelProps = HTMLAttributes<HTMLElement> & {
+  as?: ElementType;
+  children: ReactNode;
+};
 
 export default function Panel({
   as: Tag = "div",
   className = "",
   children,
-}: {
-  as?: ElementType;
-  className?: string;
-  children: ReactNode;
-}) {
+  ...rest
+}: PanelProps) {
   return (
     <Tag
       className={`frost rounded-2xl shadow-lg shadow-black/30 ${className}`}
+      {...rest}
     >
       {children}
     </Tag>

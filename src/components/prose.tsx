@@ -1,8 +1,23 @@
 import { AnchorHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { FootnoteScope } from "./FootnoteScope";
+import HeadingAnchor from "./HeadingAnchor";
+import TocRegister from "./TocRegister";
 
 // Shared typography primitives. Used directly in page sections and mapped
 // from markdown elements in mdx-components.tsx so blog and site stay consistent.
+
+// Flatten React children to plain text for use as a TOC entry label.
+function extractText(node: ReactNode): string {
+  if (node == null || node === false || node === true) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (typeof node === "object" && "props" in node) {
+    return extractText(
+      (node as { props: { children?: ReactNode } }).props.children,
+    );
+  }
+  return "";
+}
 
 export function H1({ children, ...p }: HTMLAttributes<HTMLHeadingElement>) {
   return (
@@ -15,21 +30,30 @@ export function H1({ children, ...p }: HTMLAttributes<HTMLHeadingElement>) {
   );
 }
 
-export function H2({ children, ...p }: HTMLAttributes<HTMLHeadingElement>) {
+export function H2({ children, id, ...p }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h2
-      className="ink mt-10 mb-4 text-2xl font-semibold tracking-tight sm:text-3xl"
+      id={id}
+      className="ink group mt-10 mb-4 text-2xl font-semibold tracking-tight sm:text-3xl"
       {...p}
     >
+      {id ? (
+        <TocRegister id={id} level={2} text={extractText(children)} />
+      ) : null}
       {children}
+      {id ? <HeadingAnchor id={id} /> : null}
     </h2>
   );
 }
 
-export function H3({ children, ...p }: HTMLAttributes<HTMLHeadingElement>) {
+export function H3({ children, id, ...p }: HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3 className="ink mt-8 mb-3 text-xl font-semibold" {...p}>
+    <h3 id={id} className="ink group mt-8 mb-3 text-xl font-semibold" {...p}>
+      {id ? (
+        <TocRegister id={id} level={3} text={extractText(children)} />
+      ) : null}
       {children}
+      {id ? <HeadingAnchor id={id} /> : null}
     </h3>
   );
 }

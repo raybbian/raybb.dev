@@ -129,8 +129,7 @@ function placeBandLotuses(
         const fr = ringCount === 1 ? 0 : j / (ringCount - 1);
         const inner = size * (INNER_START + RING_STEP * j);
         const len = size * (LEN_FRAC[0] + (LEN_FRAC[1] - LEN_FRAC[0]) * fr);
-        const half =
-          size * (HALF_FRAC[0] + (HALF_FRAC[1] - HALF_FRAC[0]) * fr);
+        const half = size * (HALF_FRAC[0] + (HALF_FRAC[1] - HALF_FRAC[0]) * fr);
         const ringPetals = Math.round(
           PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr,
         );
@@ -234,9 +233,7 @@ export class Lotuses {
     }
     for (const [b, band] of this.bands) {
       if (band.lastSeen === this.frame) continue;
-      const busy = band.lotuses.some(
-        (L) => L.held || L.clickT < CLICK_RELEASE,
-      );
+      const busy = band.lotuses.some((L) => L.held || L.clickT < CLICK_RELEASE);
       if (!busy) this.bands.delete(b);
     }
   }

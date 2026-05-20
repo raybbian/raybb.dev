@@ -15,6 +15,11 @@ uniform float u_rippleAmp[MAX_RIPPLES];   // 0..1 strength (1 = pads/lotuses)
 uniform float u_rippleFoam[MAX_RIPPLES];  // 1 = static collar, 0 = ring only
 uniform float u_rippleSeed[MAX_RIPPLES];  // stable per-source noise id
 uniform sampler2D u_fishDepth;      // R = fish submergence, 0 = open water
+// Pushed from WaterRenderer.ts (u_sheen, u_rippleCrest). Uniforms instead of
+// inlined `const float`s so the figure shaders can read the same TS-side
+// constants without mirroring a number into a second file.
+uniform float u_sheen;
+uniform float u_rippleCrest;
 #include "shadow.glsl"
 out vec4 o;
 
@@ -29,7 +34,6 @@ const float WIDTH_FREQ = 2.2;
 const float WIDTH_RADIAL = 0.012; // per-ring width decorrelation (1/px)
 const float WIDTH_SPEED = 0.20;
 const float RING_AA_PX = 0.25;
-const float RIPPLE_CREST = 0.20;
 const float RIPPLE_WAVELEN = 42.0;
 const float RIPPLE_BAND = 50.0;    // ring field reach outside the rim, px
 const float RIPPLE_FADE = 18.0;    // fade-out width before RIPPLE_BAND, px
@@ -39,7 +43,6 @@ const float FOAM_PX = 10.0;
 const float FOAM_VAR = 5.0;
 const float FOAM_FREQ = 4.0;
 const float FOAM_SPEED = 0.5;
-const float SHEEN = 0.06;
 
 // Livelier shadows. The shadow lookup gets a strong EXTRA displacement
 // (ambient refract + nearby ripple push) beyond the scene's, so a pad's own
@@ -169,7 +172,7 @@ void main() {
 
   vec2 suv = v_uv + offsetPx / u_res;
   vec3 col = texture(u_scene, suv).rgb;
-  col = mix(col, u_deep, SHEEN);
+  col = mix(col, u_deep, u_sheen);
   // Sample depth along the refracted lookup so the tint tracks the displaced
   // fish, not its undisturbed cell.
   float fdC = texture(u_fishDepth, suv).r;
@@ -178,7 +181,7 @@ void main() {
                  * (1.0 + mix(DEPTH_TINT_DEEP, 0.0, u_theme) * fdC);
   col = mix(col, mix(DEEP_BLUE, DEEP_BLUE_L, u_theme),
             clamp(depthAmt, 0.0, 1.0));
-  col += mask * RIPPLE_CREST;
+  col += mask * u_rippleCrest;
   // Fish are already shadowed in their own pass (baked into u_scene), so
   // exclude them (fd > 0) here to avoid double-darken. The wavy variant adds
   // an extra refract+ripple offset on top of suv so the silhouette moves

@@ -10,7 +10,20 @@ import {
 export const figures: FigureRegistry = {
   "fish-circles": () => import("./fishCircles"),
   "catmull-rom": () => import("./catmullRom"),
+  "ear-clip": () => import("./earClip"),
   "fish-ribbon": () => import("./fishRibbon"),
+  "fish-swim": () => import("./fishSwim"),
+  "frag-color-modes": () => import("./fragColorModes"),
+  "value-noise": () => import("./valueNoise"),
+  "koi-steps": () => import("./koiSteps"),
+  "koi-pattern": () => import("./koiPattern"),
+  "uv-mapping": () => import("./uvMapping"),
+  "lilypad-wires": () => import("./lilypadWires"),
+  "lotus-petal-mix": () => import("./lotusPetalMix"),
+  "displacement-noise": () => import("./displacementNoise"),
+  "fish-behavior": () => import("./fishBehavior"),
+  "flat-vs-toon": () => import("./flatVsToon"),
+  "water-refract": () => import("./waterRefract"),
 };
 
 export type FigureId = keyof typeof figures;

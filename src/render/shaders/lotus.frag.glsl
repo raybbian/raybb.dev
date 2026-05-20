@@ -5,12 +5,13 @@ in vec3 v_color;
 in vec3 v_colorDark;
 in float v_seed;
 uniform float u_theme; // 0 = dark pond, 1 = light pond (eased on theme change)
+// "Squircle for a triangle": blending the triangle SDF toward a circle SDF
+// bows the three sides convexly outward (not just the corners). u_bulge 0 =
+// sharp triangle, 1 = circle. The renderer pins this to 0.55 in production;
+// figures (lotus-petal-mix) drive it from a slider.
+uniform float u_bulge;
 out vec4 o;
 
-// "Squircle for a triangle": blending the triangle SDF toward a circle SDF
-// bows the three sides convexly outward (not just the corners). BULGE 0 =
-// sharp triangle, 1 = circle. CIRCLE_R/CIRCLE_C = blend-target disk.
-const float BULGE = 0.55;
 const float CIRCLE_R = 0.66;
 const vec2 CIRCLE_C = vec2(0.3333, 0.0); // centroid of A,B,C
 const float ALPHA_CUT = 0.01;
@@ -36,7 +37,7 @@ void main() {
   float dTri = sdTriangle(v_local, vec2(0.0, -1.0), vec2(0.0, 1.0),
                           vec2(1.0, 0.0));
   float dCir = length(v_local - CIRCLE_C) - CIRCLE_R;
-  float d = mix(dTri, dCir, BULGE);
+  float d = mix(dTri, dCir, u_bulge);
   float aa = fwidth(d);
   float a = 1.0 - smoothstep(-aa, aa, d);
   if (a < ALPHA_CUT) discard;

@@ -79,10 +79,45 @@
     border-color 250ms ease;
 }
 
+/* Typst (rehype-typst) output. Tailwind's preflight forces `svg { display:
+   block }`, which turns inline math into a block and breaks the line; restore
+   inline flow. Display equations keep their own inline `display:block`, which
+   wins over this rule. Glyphs paint via `--glyph_fill`, for which rehype-typst
+   only defines a hover value, so bind it to the surrounding text color. */
+svg.typst-doc {
+  display: inline;
+  --glyph_fill: currentColor;
+  --glyph_stroke: none;
+}
+
+/* Drawn shapes (fraction bars, roots, brackets) are `.typst-shape`, not
+   `.outline_glyph`, so `--glyph_fill` misses them and they keep Typst's
+   hard-coded black. Recolor any shape that carries a paint, leaving `none`
+   (e.g. a line's fill) untouched so it isn't accidentally filled in. */
+svg.typst-doc .typst-shape:not([stroke="none"]) {
+  stroke: currentColor !important;
+}
+svg.typst-doc .typst-shape:not([fill="none"]) {
+  fill: currentColor !important;
+}
+
+/* Each Typst SVG inlines an unscoped `<style>` whose bare `svg { fill: none }`
+   leaks document-wide and outranks the `fill="currentColor"` presentation
+   attribute on react-icons, blanking every icon on pages that contain math.
+   Out-specify it for elements that already opted into currentColor. */
+svg:not(.typst-doc)[fill="currentColor"] {
+  fill: currentColor;
+}
+
 html {
   background: var(--pond);
   scroll-behavior: smooth;
   transition: background-color 250ms ease;
+}
+
+/* Keep smooth-scroll/anchor landings clear of the fixed "← Home" button. */
+[data-blog-content] :where(h2, h3) {
+  scroll-margin-top: 5rem;
 }
 
 @media (min-width: 1024px) {
@@ -130,4 +165,20 @@ body {
   color: var(--ink);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
   transition: color 250ms ease;
+}
+
+/* Shiki's <pre> ships an inline background so its themed colors render on any
+   surface. Inside the code-snippet shell the container already paints a
+   frosted dark background, so neutralize shiki's color and own the padding. */
+.code-snippet pre.shiki {
+  background-color: transparent !important;
+  padding: 1rem 1.25rem;
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+}
+.code-snippet pre.shiki code {
+  background-color: transparent !important;
+  padding: 0;
+  font-size: inherit;
 }

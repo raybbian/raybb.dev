@@ -9,9 +9,9 @@ import {
   shadowMargin,
   shadowSunDir,
 } from "@/render/ShadowRenderer";
-import VS from "@/shaders/water.vert.glsl";
-import FS from "@/shaders/water.frag.glsl";
-import REFRACT_FS from "@/shaders/refract.frag.glsl";
+import VS from "@/render/shaders/water.vert.glsl";
+import FS from "@/render/shaders/water.frag.glsl";
+import REFRACT_FS from "@/render/shaders/refract.frag.glsl";
 
 // Upper bound for the shader's ripple-source uniform array (the GLSL `#define`
 // below is injected from this, so it's the single source of truth). Per-frame
@@ -43,8 +43,14 @@ export interface RippleSink {
 const REFRACT_SHIFT = 2; // ambient refraction baked at 1/4 res (low-freq)
 // `u_deep` SHEEN target, per theme (lerped by themeMix). Dark: #1d5f5c.
 // Light: origin/main's original deep teal (#1d5f5c).
-const DEEP_DARK: [number, number, number] = [0.06, 0.26, 0.25];
-const DEEP_LIGHT: [number, number, number] = [0.114, 0.373, 0.361];
+export const DEEP_DARK: [number, number, number] = [0.06, 0.26, 0.25];
+export const DEEP_LIGHT: [number, number, number] = [0.114, 0.373, 0.361];
+// Toon-water mix factor (col = mix(scene, u_deep, SHEEN)) and the crest
+// brightness boost (col += mask * RIPPLE_CREST). Pushed to the fragment
+// shader as uniforms (u_sheen, u_rippleCrest) so the figure shaders can
+// import the same TS-side constants without duplicating their values.
+export const SHEEN = 0.06;
+export const RIPPLE_CREST = 0.2;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -118,6 +124,8 @@ export class WaterRenderer {
   private uShadowFade: WebGLUniformLocation;
   private uRecvHeight: WebGLUniformLocation;
   private uScale: WebGLUniformLocation;
+  private uSheen: WebGLUniformLocation;
+  private uRippleCrest: WebGLUniformLocation;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -150,6 +158,8 @@ export class WaterRenderer {
     this.uShadowFade = u("u_shadowFade");
     this.uRecvHeight = u("u_recvHeight");
     this.uScale = u("u_scale");
+    this.uSheen = u("u_sheen");
+    this.uRippleCrest = u("u_rippleCrest");
 
     this.refractProg = createProgram(gl, VS, REFRACT_FS);
     this.uRefractRes = gl.getUniformLocation(this.refractProg, "u_res")!;
@@ -386,6 +396,8 @@ export class WaterRenderer {
     gl.uniform2f(this.uRes, width, height);
     gl.uniform1f(this.uTime, time);
     gl.uniform1f(this.uScale, screenScale);
+    gl.uniform1f(this.uSheen, SHEEN);
+    gl.uniform1f(this.uRippleCrest, RIPPLE_CREST);
     const t = this.themeMix;
     gl.uniform1f(this.uTheme, t);
     gl.uniform3f(

@@ -1,49 +1,69 @@
-import { createProgram } from "@/lib/gl";
 import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
-import { fishBodyMesh, fitInto } from "./fishMesh";
+import { Fish, type FishGeometry } from "@/sim/Fish";
+import { CHAIN_LINK_SIZE } from "@/sim/fishBodyMesh";
+import { FishRenderer } from "@/render/FishRenderer";
 import { PALETTE as P } from "@/figures/palette";
+import fishFlatFrag from "@/render/shaders/fishFlat.frag.glsl";
+import ellipseFlatFrag from "@/render/shaders/ellipseFlat.frag.glsl";
 
-// The body triangulation the renderer ACTUALLY uses (Fish.ts ~636-727):
-// no ear-clipping. Every smoothed boundary point is joined to the spine
-// centerline straight across from it (same u), making a ribbon of quads.
-// Note the fan-like spokes to the centerline vs. the previous figure's
-// ear-clipped sliver triangles. Tap to toggle the wireframe; the tail sways.
+// The body triangulation the renderer ACTUALLY uses: no ear-clipping. Every
+// smoothed boundary point is joined to the spine centerline straight across
+// from it (same u), making a ribbon of quads. Note the fan-like spokes to
+// the centerline vs. the previous figure's ear-clipped sliver triangles.
+// Tap to toggle the wireframe.
 
-const VS = `#version 300 es
-in vec2 a_pos;
-void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
-
-const FS = `#version 300 es
-precision mediump float;
-uniform vec4 u_color;
-out vec4 o;
-void main() { o = u_color; }`;
+const RIBBON_SEGMENTS = 4;
+const FLOATS_PER_VERT = 8;
+const FIT_PAD = 0.1;
 
 class RibbonSketch implements Sketch {
-  animated = true;
+  animated = false;
   private gl: WebGL2RenderingContext;
-  private prog: WebGLProgram;
-  private vao: WebGLVertexArrayObject;
-  private vbo: WebGLBuffer;
-  private uColor: WebGLUniformLocation;
+  private renderer: FishRenderer;
+  private fish: Fish;
+  private geo: FishGeometry | null = null;
   private w = 0;
   private h = 0;
-  private wireOnly = false;
-  private tris = new Float32Array(0);
-  private lines = new Float32Array(0);
+  private hideWire = true;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
-    this.prog = createProgram(gl, VS, FS);
-    this.uColor = gl.getUniformLocation(this.prog, "u_color")!;
-    this.vao = gl.createVertexArray()!;
-    this.vbo = gl.createBuffer()!;
-    gl.bindVertexArray(this.vao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    const loc = gl.getAttribLocation(this.prog, "a_pos");
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    gl.bindVertexArray(null);
+    this.renderer = new FishRenderer(gl, {
+      shaders: { solidFrag: fishFlatFrag, ellipseFrag: ellipseFlatFrag },
+      features: { pattern: false, shadow: false, cast: false },
+      enable: {
+        caudal: false,
+        body: true,
+        dorsalShadow: false,
+        dorsal: false,
+        fins: false,
+        eyes: false,
+      },
+    });
+    // Static body — never resolve(). Constructor lays the chain out vertically
+    // from the origin; pose it horizontally below so the body reads as a
+    // side-on koi (head at small x, tail at large x).
+    this.fish = new Fish(
+      { x: 0, y: 0 },
+      {
+        base: P.fillGL,
+        mid: P.fillGL,
+        accent: P.fillGL,
+        fin: P.fillGL,
+      },
+      0,
+      1,
+      {},
+      1,
+    );
+    const joints = this.fish.spine.joints;
+    const angles = this.fish.spine.angles;
+    for (let i = 0; i < joints.length; i++) {
+      joints[i] = { x: i * CHAIN_LINK_SIZE, y: 0 };
+      // head is at joint 0 (smaller x), so the head-direction unit vector
+      // (joint[i-1] - joint[i]) points in -x: angle = π.
+      angles[i] = Math.PI;
+    }
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
@@ -53,69 +73,59 @@ class RibbonSketch implements Sketch {
   resize(w: number, h: number) {
     this.w = w;
     this.h = h;
+    this.geo = null;
   }
 
   pointer(p: PointerInfo) {
-    if (p.type === "down") this.wireOnly = !this.wireOnly;
+    if (p.type === "down") this.hideWire = !this.hideWire;
   }
 
-  private build(t: number) {
+  private buildAndFit(): FishGeometry | null {
     const { w, h } = this;
-    if (w === 0 || h === 0) return;
-    // Same body ring + swim curve as the ear-clip figure, but stitched the
-    // way the renderer does: boundary↔centerline ribbon, fixed topology.
-    const { verts, indices } = fishBodyMesh(
-      (s) => Math.sin(t * 2.4 - s * 4) * 34 * s * s,
-    );
-    const pts = fitInto(verts, w, h, 0.1);
-    const clip = pts.map((p) => ({
-      x: (p.x / w) * 2 - 1,
-      y: 1 - (p.y / h) * 2,
-    }));
+    if (w === 0 || h === 0) return null;
+    // Pull the same FishGeometry the live renderer consumes — pooled inside
+    // Fish, body indices already laid out at [bodyIdxStart, shadowIdxStart).
+    const geo = this.fish.buildGeometry(1, RIBBON_SEGMENTS);
 
-    const tris = new Float32Array(indices.length * 2);
-    const lines = new Float32Array(indices.length * 4);
-    for (let k = 0; k < indices.length; k += 3) {
-      const a = clip[indices[k]];
-      const b = clip[indices[k + 1]];
-      const c = clip[indices[k + 2]];
-      tris.set([a.x, a.y, b.x, b.y, c.x, c.y], k * 2);
-      lines.set(
-        [a.x, a.y, b.x, b.y, b.x, b.y, c.x, c.y, c.x, c.y, a.x, a.y],
-        k * 4,
-      );
+    // Fit body bbox into the canvas. Caudal/dorsal verts ride along the same
+    // transform — they aren't drawn but live in the same buffer.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const v = geo.verts;
+    for (let i = geo.bodyIdxStart; i < geo.shadowIdxStart; i++) {
+      const off = geo.indices[i] * FLOATS_PER_VERT;
+      const x = v[off];
+      const y = v[off + 1];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
-    this.tris = tris;
-    this.lines = lines;
+    const bw = maxX - minX || 1;
+    const bh = maxY - minY || 1;
+    const s = Math.min((w * (1 - FIT_PAD)) / bw, (h * (1 - FIT_PAD)) / bh);
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    for (let i = 0; i < geo.vCount; i += FLOATS_PER_VERT) {
+      v[i] = w / 2 + (v[i] - cx) * s;
+      v[i + 1] = h / 2 + (v[i + 1] - cy) * s;
+    }
+    return geo;
   }
 
-  frame(t: number) {
+  frame() {
     const gl = this.gl;
-    this.build(t);
+    if (!this.geo) this.geo = this.buildAndFit();
     gl.clearColor(P.bgGL[0], P.bgGL[1], P.bgGL[2], P.bgGL[3]);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.prog);
-    gl.bindVertexArray(this.vao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-
-    if (!this.wireOnly && this.tris.length) {
-      gl.bufferData(gl.ARRAY_BUFFER, this.tris, gl.DYNAMIC_DRAW);
-      gl.uniform4fv(this.uColor, P.fillGL);
-      gl.drawArrays(gl.TRIANGLES, 0, this.tris.length / 2);
+    if (!this.geo) return;
+    this.renderer.draw(this.geo, this.w, this.h, 0);
+    if (!this.hideWire) {
+      this.renderer.drawBodyWireframe(this.geo, this.w, this.h, P.wireGL);
     }
-    if (this.lines.length) {
-      gl.bufferData(gl.ARRAY_BUFFER, this.lines, gl.DYNAMIC_DRAW);
-      gl.uniform4fv(this.uColor, P.wireGL);
-      gl.drawArrays(gl.LINES, 0, this.lines.length / 2);
-    }
-    gl.bindVertexArray(null);
   }
 
   dispose() {
-    const gl = this.gl;
-    gl.deleteProgram(this.prog);
-    gl.deleteBuffer(this.vbo);
-    gl.deleteVertexArray(this.vao);
+    this.renderer.dispose();
   }
 }
 

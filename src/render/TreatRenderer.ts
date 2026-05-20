@@ -4,8 +4,8 @@ import {
   unitCircleMesh,
 } from "@/lib/gl";
 import { TREAT_INST_FLOATS } from "@/sim/Treats";
-import VS from "@/shaders/treat.vert.glsl";
-import FS from "@/shaders/treat.frag.glsl";
+import VS from "@/render/shaders/treat.vert.glsl";
+import FS from "@/render/shaders/treat.frag.glsl";
 
 const CIRCLE_SEG = 32;
 

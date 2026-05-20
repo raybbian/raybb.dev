@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import Panel from "@/components/Panel";
 import { FootnotesProvider } from "@/components/FootnotesProvider";
+import { TocProvider } from "@/components/TocProvider";
 import { getPost, postSlugs } from "@/content/blog";
 import { readingTimeMinutes } from "@/content/blog/readingTime";
 
@@ -34,27 +35,28 @@ export default async function BlogPost({
   const { Component: Post, meta } = post;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-28">
-      <Link
-        href="/"
-        className="frost ink-2 fixed left-5 top-5 z-50 rounded-full px-4 py-2.5 text-sm font-medium transition-colors hover:bg-black/50"
-      >
-        ← Home
-      </Link>
-      <Link
-        href="/blog"
-        className="accent text-sm transition-opacity hover:opacity-70"
-      >
-        ← All posts
-      </Link>
-      <p className="ink-3 mt-6 text-sm">
-        {meta.date} · {readingTimeMinutes(slug)} min read
-      </p>
-      <Panel className="mt-3 px-7 py-8 sm:px-10 sm:py-10">
-        <FootnotesProvider>
-          <Post />
-        </FootnotesProvider>
-      </Panel>
+    <main className="mx-auto w-full max-w-3xl px-0 py-20 sm:px-6 sm:py-28">
+      <div className="px-5 sm:px-0">
+        <Link
+          href="/blog"
+          className="accent text-sm transition-opacity hover:opacity-70"
+        >
+          ← All posts
+        </Link>
+        <p className="ink-3 mt-6 text-sm">
+          {meta.date} · {readingTimeMinutes(slug)} min read
+        </p>
+      </div>
+      <TocProvider>
+        <Panel
+          className="mt-3 rounded-none px-5 py-8 sm:rounded-2xl sm:px-10 sm:py-10"
+          data-blog-content
+        >
+          <FootnotesProvider>
+            <Post />
+          </FootnotesProvider>
+        </Panel>
+      </TocProvider>
     </main>
   );
 }

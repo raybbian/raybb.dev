@@ -14,21 +14,42 @@ import {
   shadowMargin,
   shadowSunDir,
 } from "@/render/ShadowRenderer";
-import VS from "@/shaders/lilypad.vert.glsl";
-import FS from "@/shaders/lilypad.frag.glsl";
-import CAST_FS from "@/shaders/lilypad.shadow.frag.glsl";
+import VS from "@/render/shaders/lilypad.vert.glsl";
+import FS from "@/render/shaders/lilypad.frag.glsl";
+import CAST_FS from "@/render/shaders/lilypad.shadow.frag.glsl";
+import WIRE_FS from "@/render/shaders/lilypad.wire.frag.glsl";
 
 const CIRCLE_SEG = 64;
+
+// Triangle-fan edges for the unit-circle mesh: per triangle (3i, 3i+1, 3i+2)
+// emit lines (origin->rimA, rimA->rimB, rimB->origin). Adjacent triangles
+// share their spoke; drawing those edges twice is cheaper than de-duping and
+// visually identical. Indices stay in [0, 3*segments).
+function lilypadWireIndices(segments: number): Uint16Array {
+  const out = new Uint16Array(segments * 6);
+  let o = 0;
+  for (let i = 0; i < segments; i++) {
+    const a = i * 3, b = a + 1, c = a + 2;
+    out[o++] = a; out[o++] = b;
+    out[o++] = b; out[o++] = c;
+    out[o++] = c; out[o++] = a;
+  }
+  return out;
+}
 
 export class LilypadRenderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
   private castProg: WebGLProgram; // same VS, height-output FS
+  private wireProg: WebGLProgram; // same VS, flat-line FS (figures only)
   private vao: WebGLVertexArrayObject;
   private castVao: WebGLVertexArrayObject;
+  private wireVao: WebGLVertexArrayObject;
   private circleVbo: WebGLBuffer;
   private instVbo: WebGLBuffer;
+  private wireIbo: WebGLBuffer;
   private circleCount: number;
+  private wireIndexCount: number;
   private resLoc: WebGLUniformLocation;
   private scrollLoc: WebGLUniformLocation;
   private castResLoc: WebGLUniformLocation;
@@ -36,6 +57,10 @@ export class LilypadRenderer {
   private castHeightLoc: WebGLUniformLocation;
   private castOffsetLoc: WebGLUniformLocation;
   private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw (shares cast VS)
+  private wireResLoc: WebGLUniformLocation;
+  private wireScrollLoc: WebGLUniformLocation;
+  private wireOffsetLoc: WebGLUniformLocation;
+  private wireColorLoc: WebGLUniformLocation;
   private sh: {
     tex: WebGLUniformLocation;
     fragRes: WebGLUniformLocation;
@@ -54,6 +79,7 @@ export class LilypadRenderer {
     this.gl = gl;
     this.prog = createProgram(gl, VS, FS);
     this.castProg = createProgram(gl, VS, CAST_FS);
+    this.wireProg = createProgram(gl, VS, WIRE_FS);
     this.resLoc = gl.getUniformLocation(this.prog, "u_res")!;
     this.scrollLoc = gl.getUniformLocation(this.prog, "u_scroll")!;
     this.castResLoc = gl.getUniformLocation(this.castProg, "u_res")!;
@@ -62,6 +88,10 @@ export class LilypadRenderer {
     this.castOffsetLoc =
       gl.getUniformLocation(this.castProg, "u_castOffset")!;
     this.offsetLoc = gl.getUniformLocation(this.prog, "u_castOffset")!;
+    this.wireResLoc = gl.getUniformLocation(this.wireProg, "u_res")!;
+    this.wireScrollLoc = gl.getUniformLocation(this.wireProg, "u_scroll")!;
+    this.wireOffsetLoc = gl.getUniformLocation(this.wireProg, "u_castOffset")!;
+    this.wireColorLoc = gl.getUniformLocation(this.wireProg, "u_wireColor")!;
     const u = (n: string) => gl.getUniformLocation(this.prog, n)!;
     this.sh = {
       tex: u("u_shadow"),
@@ -83,8 +113,20 @@ export class LilypadRenderer {
     this.instVbo = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
 
+    const wireIdx = lilypadWireIndices(CIRCLE_SEG);
+    this.wireIndexCount = wireIdx.length;
+    this.wireIbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.wireIbo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, wireIdx, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
     this.vao = this.makeVao(this.prog);
     this.castVao = this.makeVao(this.castProg);
+    this.wireVao = this.makeVao(this.wireProg);
+    // Bind the line index buffer into the wire VAO so drawElements picks it up.
+    gl.bindVertexArray(this.wireVao);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.wireIbo);
+    gl.bindVertexArray(null);
   }
 
   // Binds the shared buffers for `prog`'s own attribute locations (color and
@@ -192,13 +234,46 @@ export class LilypadRenderer {
     gl.disable(gl.BLEND);
   }
 
+  // Figure-only: render the triangle-fan mesh as lines, with the same notch
+  // carve as the visible pass so removed wedges drop out. No shadow uniforms,
+  // no blending toggle dance — figures handle GL state themselves.
+  drawWires(
+    data: Float32Array,
+    count: number,
+    width: number,
+    height: number,
+    scroll: number,
+    color: [number, number, number, number],
+  ) {
+    if (count === 0) return;
+    const gl = this.gl;
+    this.upload(data, count);
+    gl.useProgram(this.wireProg);
+    gl.uniform2f(this.wireResLoc, width, height);
+    gl.uniform1f(this.wireScrollLoc, scroll);
+    gl.uniform2f(this.wireOffsetLoc, 0, 0);
+    gl.uniform4f(this.wireColorLoc, color[0], color[1], color[2], color[3]);
+    gl.bindVertexArray(this.wireVao);
+    gl.drawElementsInstanced(
+      gl.LINES,
+      this.wireIndexCount,
+      gl.UNSIGNED_SHORT,
+      0,
+      count,
+    );
+    gl.bindVertexArray(null);
+  }
+
   dispose() {
     const gl = this.gl;
     gl.deleteProgram(this.prog);
     gl.deleteProgram(this.castProg);
+    gl.deleteProgram(this.wireProg);
     gl.deleteVertexArray(this.vao);
     gl.deleteVertexArray(this.castVao);
+    gl.deleteVertexArray(this.wireVao);
     gl.deleteBuffer(this.circleVbo);
     gl.deleteBuffer(this.instVbo);
+    gl.deleteBuffer(this.wireIbo);
   }
 }

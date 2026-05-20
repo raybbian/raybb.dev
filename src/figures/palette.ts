@@ -17,4 +17,8 @@ export const PALETTE = {
 
   fillGL: [0.18, 0.83, 0.75, 0.22] as [number, number, number, number],
   wireGL: [0.7, 0.78, 0.85, 0.85] as [number, number, number, number],
+  // GL counterpart of `accent` (#2dd4bf) so shaders can sample the same teal
+  // without parsing the CSS string. Alpha kept at 1 — figures multiply their
+  // own alpha if they want translucency.
+  accentGL: [0.176, 0.831, 0.749, 1.0] as [number, number, number, number],
 };

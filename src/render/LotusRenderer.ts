@@ -5,9 +5,9 @@ import {
   castShadowOffset,
   shadowMargin,
 } from "@/render/ShadowRenderer";
-import VS from "@/shaders/lotus.vert.glsl";
-import FS from "@/shaders/lotus.frag.glsl";
-import CAST_FS from "@/shaders/lotus.shadow.frag.glsl";
+import VS from "@/render/shaders/lotus.vert.glsl";
+import FS from "@/render/shaders/lotus.frag.glsl";
+import CAST_FS from "@/render/shaders/lotus.shadow.frag.glsl";
 
 // Bleed past the [0,1]x[-1,1] petal box so lotus.frag's rounded edge (ROUND)
 // is never clipped by the quad.
@@ -42,7 +42,11 @@ export class LotusRenderer {
   private castOffsetLoc: WebGLUniformLocation;
   private offsetLoc: WebGLUniformLocation; // visible prog: zeroed each draw (shares cast VS)
   private themeLoc: WebGLUniformLocation; // 0 = dark, 1 = light; eased by caller
+  private bulgeLoc: WebGLUniformLocation; // squircle blend: 0 triangle, 1 circle
   private themeMix = 1;
+  // Production value matches the const this shader used to bake in; figures
+  // (lotus-petal-mix) drive it from a slider via setBulge().
+  private bulge = 0.55;
   private capacityFloats = 0;
 
   constructor(gl: WebGL2RenderingContext) {
@@ -58,6 +62,7 @@ export class LotusRenderer {
       gl.getUniformLocation(this.castProg, "u_castOffset")!;
     this.offsetLoc = gl.getUniformLocation(this.prog, "u_castOffset")!;
     this.themeLoc = gl.getUniformLocation(this.prog, "u_theme")!;
+    this.bulgeLoc = gl.getUniformLocation(this.prog, "u_bulge")!;
 
     const quad = petalQuad();
     this.quadCount = quad.length / 2;
@@ -97,6 +102,12 @@ export class LotusRenderer {
   // palette cross-fades smoothly when the site theme toggles.
   setTheme(mix: number): void {
     this.themeMix = mix;
+  }
+
+  // Petal SDF blend: 0 = sharp triangle, 1 = full circle (used by the
+  // lotus-petal-mix figure to morph the petal in real time).
+  setBulge(v: number): void {
+    this.bulge = v;
   }
 
   private upload(data: Float32Array, count: number) {
@@ -152,6 +163,7 @@ export class LotusRenderer {
     gl.uniform1f(this.scrollLoc, scroll);
     gl.uniform2f(this.offsetLoc, 0, 0); // no cast offset on visible draws
     gl.uniform1f(this.themeLoc, this.themeMix);
+    gl.uniform1f(this.bulgeLoc, this.bulge);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindVertexArray(this.vao);

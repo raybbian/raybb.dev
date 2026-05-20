@@ -1,6 +1,12 @@
 import { catmullRomClosed, type Vec2 } from "@/lib/math";
 import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
-import { CURVE_SEGMENTS, fishBodyRing, fitInto } from "./fishMesh";
+import {
+  CURVE_SEGMENTS,
+  anglesFromJoints,
+  fishBodyRing,
+  fitInto,
+  straightSpineJoints,
+} from "./fishMesh";
 import { PALETTE as P } from "@/figures/palette";
 
 type Pt = { x: number; y: number };
@@ -48,12 +54,15 @@ const LEFT0: Pt[] = [
 ];
 
 class CatmullSketch implements Sketch {
-  animated = true;
+  // Static fish — nothing to animate.
+  animated = false;
   private ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
   private left = LEFT0.map((p) => ({ ...p }));
   private drag = -1;
+  private rightRing: Vec2[] = [];
+  private rightSmooth: Vec2[] = [];
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -65,6 +74,19 @@ class CatmullSketch implements Sketch {
     this.w = w;
     this.h = h;
     void dpr;
+    if (w === 0 || h === 0) return;
+    // Straight-spine body lives in the right half. Built once at resize-time
+    // and fit into the panel; no per-frame work.
+    const joints = straightSpineJoints();
+    const angles = anglesFromJoints(joints);
+    const rawRing = fishBodyRing(joints, angles);
+    const rw = w / 2 - 36;
+    const rx = w / 2 + 12;
+    this.rightRing = fitInto(rawRing, rw, h, 0.16).map((p) => ({
+      x: p.x + rx,
+      y: p.y,
+    }));
+    this.rightSmooth = catmullRomClosed(this.rightRing, CURVE_SEGMENTS);
   }
 
   private leftRect() {
@@ -103,7 +125,7 @@ class CatmullSketch implements Sketch {
     ctx.stroke();
   }
 
-  frame(t: number) {
+  frame() {
     const ctx = this.ctx;
     const { w, h } = this;
     ctx.clearRect(0, 0, w, h);
@@ -134,19 +156,11 @@ class CatmullSketch implements Sketch {
       ctx.fill();
     });
 
-    // ---- Right: the real fish mesh, gently swimming ----
-    const rw = w / 2 - 36;
-    const raw: Vec2[] = fitInto(
-      fishBodyRing((s) => Math.sin(t * 1.6 + s * 4.5) * 26 * s),
-      rw,
-      h,
-      0.16,
-    ).map((p) => ({ x: p.x + w / 2 + 12, y: p.y }));
-    const smooth = catmullRomClosed(raw, CURVE_SEGMENTS);
+    // ---- Right: the real fish mesh, posed and still ----
     ctx.strokeStyle = P.structural;
     ctx.lineWidth = 1;
-    this.stroke(raw, true);
-    raw.forEach((m) => {
+    this.stroke(this.rightRing, true);
+    this.rightRing.forEach((m) => {
       ctx.fillStyle = P.structural;
       ctx.beginPath();
       ctx.arc(m.x, m.y, 2.5, 0, Math.PI * 2);
@@ -154,7 +168,7 @@ class CatmullSketch implements Sketch {
     });
     ctx.strokeStyle = P.accent;
     ctx.lineWidth = 2.5;
-    this.stroke(smooth, true);
+    this.stroke(this.rightSmooth, true);
 
     ctx.fillStyle = P.hint;
     ctx.font = P.font;

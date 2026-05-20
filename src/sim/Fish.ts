@@ -18,6 +18,19 @@ import type { Rgba } from "./koiPattern";
 import { mulberry32 } from "@/lib/math";
 import { noise1 } from "./noise";
 import { Chain } from "./Chain";
+import {
+  BODY_WIDTHS,
+  CHAIN_LINK_SIZE,
+  CHAIN_MAX_BEND,
+  CURVE_SEGMENTS,
+  HALF_PI,
+  SNOUT_ANGLE,
+  SNOUT_TIP_LEN,
+  buildBodyMesh,
+  createBodyMeshScratch,
+  type BodyMeshScratch,
+  type SnoutShape,
+} from "./fishBodyMesh";
 
 // Swim dynamics tuned per 1/60 s tick; resolve() scales by dt.
 const TICK_FPS = 60;
@@ -60,13 +73,8 @@ const BURST_MULT = 1.35; // speed multiplier during a burst
 // 0 so the depth buffer can reserve 0 for "open water".
 const DEPTH_BASE = 0.4; // default submergence when none is supplied
 
-const CHAIN_JOINTS = 12;
-const CHAIN_LINK_SIZE = 64; // px between spine joints
-const CHAIN_MAX_BEND = Math.PI / 8; // max bend per joint
-const BODY_WIDTHS = [68, 81, 84, 83, 77, 64, 51, 38, 32, 19]; // half-width / seg
-const BODY_SEGMENTS = BODY_WIDTHS.length; // body uses the first N spine joints
+const CHAIN_JOINTS = 12; // body uses the first BODY_WIDTHS.length of these
 
-const CURVE_SEGMENTS = 14;
 const BEZIER_SEGMENTS = 22;
 const FLOATS_PER_VERT = 8; // interleaved x,y,r,g,b,a,u,v
 
@@ -82,7 +90,6 @@ const DORSAL_CTRL_DIST = 16; // bezier control-arm length vs body bend
 // a straight fish still casts a wide, curved-outward band, not a sliver.
 const DORSAL_FIN_HEIGHT = 14; // world px per unit scale, peak mid-spine
 
-const HALF_PI = Math.PI / 2; // body flank + ventral + eye side angle
 const PECTORAL_ANGLE = Math.PI / 3;
 const PECTORAL_ROT = Math.PI / 4;
 const PECTORAL_W = 160;
@@ -93,20 +100,6 @@ const VENTRAL_H = 32;
 const EYE_OFFSET = -18; // inset from the snout joint
 const EYE_DIAM = 24;
 const EYE: Rgba = [0, 0, 0, 1];
-
-// UV layout drives the procedural koi pattern: u runs head->tail, v across
-// the flanks; tip overshoots keep u changing through the nose/tail.
-const TIP_U_OVERSHOOT = 1 / 30; // push tail u past 1 so it keeps sweeping
-const SNOUT_TIP_LEN = 4; // how far the nose tip pokes past joint 0
-const SNOUT_ANGLE = Math.PI / 6;
-const SNOUT_U_SIDE = -1 / 10;
-const SNOUT_U_TIP = -1 / 8;
-const SNOUT_V_HI = 0.66;
-const SNOUT_V_MID = 0.5;
-const SNOUT_V_LO = 0.34;
-const FLANK_V_TOP = 0;
-const FLANK_V_BOT = 1;
-const CENTER_V = 0.5;
 
 // mouthOpen in [0,1] morphs the three snout control points into the koi "O".
 // Idle: brief open->close pulses. Pursuing a treat: shut during the chase,
@@ -175,6 +168,10 @@ export interface FishGeometry {
   vCount: number;
   indices: Uint32Array;
   iCount: number;
+  // Index where the body silhouette begins (== end of caudal). Lets callers
+  // that don't drive the procedural pattern texture (e.g. the blog figures)
+  // color the caudal as a fin instead of as the body.
+  bodyIdxStart: number;
   // Index where the dorsal self-shadow band begins (== end of caudal+body)
   // and where the dorsal fin begins (== end of the band). Lets the renderer
   // alpha-blend the band and exclude it from the shadow-cast pass.
@@ -193,7 +190,9 @@ export class Fish {
   private fixedDepth: number; // constant submergence, set once at construction
 
   // Set by applyScale() from the constructor and re-derived on each feed.
-  private bodyWidth!: number[];
+  // Public so blog figures can pass the actual per-fish scaled widths to
+  // the shared fishBodyMesh helper.
+  bodyWidth!: number[];
   private snoutTipLen!: number;
   private snoutTipLenOpen!: number;
   private snoutOpenLipOut!: number;
@@ -241,6 +240,7 @@ export class Fish {
     vCount: 0,
     indices: this.ibuf,
     iCount: 0,
+    bodyIdxStart: 0,
     shadowIdxStart: 0,
     dorsalIdxStart: 0,
     finInstances: this.finBuf,
@@ -252,10 +252,6 @@ export class Fish {
   // Reused buildGeometry() scratch, mutated in place every frame.
   private _caudal: Vec2[] = [];
   private _caudalRing: Vec2[] = [];
-  private _bodyRing: Vec2[] = [];
-  private _bodyUV: Vec2[] = [];
-  private _ringPos: Vec2[] = [];
-  private _ringUV: Vec2[] = [];
   private _dorsal: Vec2[] = [];
   private _dorsalShadow: Vec2[] = [];
   private _dorsalShadowUV: Vec2[] = [];
@@ -263,12 +259,15 @@ export class Fish {
   private _sf1: number[] = [];
   private _c1: Vec2 = { x: 0, y: 0 };
   private _c2: Vec2 = { x: 0, y: 0 };
-  private _clU: number[] = [];
-  private _clP: Vec2[] = [];
-  private _clEnd0: Vec2 = { x: 0, y: 0 };
-  private _clEnd1: Vec2 = { x: 0, y: 0 };
-  private _center: Vec2 = { x: 0, y: 0 };
   private _triIdx: number[] = [];
+  private _snout: SnoutShape = {
+    sideAngle: SNOUT_ANGLE,
+    sideLenOffset: 0,
+    tipLenOffset: SNOUT_TIP_LEN,
+    protrudeX: 0,
+    protrudeY: 0,
+  };
+  private _bodyMesh: BodyMeshScratch = createBodyMeshScratch();
 
   constructor(
     origin: Vec2,
@@ -356,6 +355,24 @@ export class Fish {
 
   get sated(): boolean {
     return this.satedTimer > 0;
+  }
+
+  // Live snapshot used by the fish-behavior figure's debug overlay (sense
+  // radii drawn as rings + a cooldown arc on sated fish). The fields are
+  // private so the figure can't poke them; the getter exposes a read-only
+  // copy.
+  get debug(): {
+    avoidRadius: number;
+    seekRadius: number;
+    satedRemaining: number;
+    satedDuration: number;
+  } {
+    return {
+      avoidRadius: this.avoidRadius,
+      seekRadius: this.seekRadius,
+      satedRemaining: Math.max(0, this.satedTimer),
+      satedDuration: SATED_DUR,
+    };
   }
 
   // dt in seconds; constants tuned at 60fps so per-tick limits normalize via
@@ -521,8 +538,10 @@ export class Fish {
   }
 
   // `sunSignX` mirrors the dorsal shadow's horizontal shear with the theme
-  // (see SUN_X comment); defaults to the light pond (+1).
-  buildGeometry(sunSignX = 1): FishGeometry {
+  // (see SUN_X comment); defaults to the light pond (+1). `segments` controls
+  // the per-span Catmull-Rom resolution for caudal + body — overridable so
+  // the blog ribbon figure can render a deliberately chunky mesh.
+  buildGeometry(sunSignX = 1, segments: number = CURVE_SEGMENTS): FishGeometry {
     const j = this.spine.joints;
     const a = this.spine.angles;
 
@@ -578,152 +597,53 @@ export class Fish {
       p.y = j[i].y + Math.sin(ang) * w;
     }
     if (caudal.length > cw) caudal.length = cw;
-    emit(catmullRomClosedInto(caudal, CURVE_SEGMENTS, this._caudalRing), FIN);
+    emit(catmullRomClosedInto(caudal, segments, this._caudalRing), FIN);
+    const bodyIdxStart = iLen;
 
-    // Silhouette is the smoothed outline ring; UVs built in lockstep (one per
-    // control point). Tip points push u past [0,1] so it keeps changing
-    // through the nose/tail instead of flattening into a patch.
-    const bodyRing = this._bodyRing;
-    const bodyUV = this._bodyUV;
-    let bw = 0;
-    const uvAt = (k: number, x: number, y: number) => {
-      const u = poolAt(bodyUV, k);
-      u.x = x;
-      u.y = y;
-    };
-    for (let i = 0; i < BODY_SEGMENTS; i++) {
-      this.posInto(poolAt(bodyRing, bw), i, HALF_PI, 0);
-      uvAt(bw, i / (BODY_SEGMENTS - 1), FLANK_V_TOP);
-      bw++;
-    }
-    this.posInto(poolAt(bodyRing, bw), BODY_SEGMENTS - 1, Math.PI, 0);
-    uvAt(bw, 1 + TIP_U_OVERSHOOT, CENTER_V);
-    bw++;
-    for (let i = BODY_SEGMENTS - 1; i >= 0; i--) {
-      this.posInto(poolAt(bodyRing, bw), i, -HALF_PI, 0);
-      uvAt(bw, i / (BODY_SEGMENTS - 1), FLANK_V_BOT);
-      bw++;
-    }
-    // Lips swing wide while the tip recedes -> pointed nose flattens into the
-    // koi "O" (see MOUTH_* / SNOUT_OPEN_*).
+    // Snout posture: at mouthOpen=0 the lips/tip sit at SNOUT_ANGLE/SNOUT_TIP_LEN
+    // (closed mouth, pointed nose). At mouthOpen=1 the lips swing wide, the
+    // tip recedes, and the whole mouth telescopes forward along the heading
+    // so the pointed nose flattens into the koi "O".
     const mo = this.mouthOpen;
-    const snoutAng = SNOUT_ANGLE + (SNOUT_OPEN_ANGLE - SNOUT_ANGLE) * mo;
-    const lipLen = this.snoutOpenLipOut * mo;
-    const tipLenNow =
-      this.snoutTipLen + (this.snoutTipLenOpen - this.snoutTipLen) * mo;
-    // Telescope forward along the heading so the mouth pushes out as it
-    // flattens instead of retreating into the head.
     const protrude = this.snoutProtrude * mo;
-    const fwdX = Math.cos(a[0]) * protrude;
-    const fwdY = Math.sin(a[0]) * protrude;
-    let sp = this.posInto(poolAt(bodyRing, bw), 0, -snoutAng, lipLen);
-    sp.x += fwdX;
-    sp.y += fwdY;
-    uvAt(bw, SNOUT_U_SIDE, SNOUT_V_HI);
-    bw++;
-    sp = this.posInto(poolAt(bodyRing, bw), 0, 0, tipLenNow);
-    sp.x += fwdX;
-    sp.y += fwdY;
-    uvAt(bw, SNOUT_U_TIP, SNOUT_V_MID);
-    bw++;
-    sp = this.posInto(poolAt(bodyRing, bw), 0, snoutAng, lipLen);
-    sp.x += fwdX;
-    sp.y += fwdY;
-    uvAt(bw, SNOUT_U_SIDE, SNOUT_V_LO);
-    bw++;
-    if (bodyRing.length > bw) bodyRing.length = bw;
-    if (bodyUV.length > bw) bodyUV.length = bw;
-    const ringPos = catmullRomClosedInto(
-      bodyRing,
-      CURVE_SEGMENTS,
-      this._ringPos,
+    const snout = this._snout;
+    snout.sideAngle = SNOUT_ANGLE + (SNOUT_OPEN_ANGLE - SNOUT_ANGLE) * mo;
+    snout.sideLenOffset = this.snoutOpenLipOut * mo;
+    snout.tipLenOffset =
+      this.snoutTipLen + (this.snoutTipLenOpen - this.snoutTipLen) * mo;
+    snout.protrudeX = Math.cos(a[0]) * protrude;
+    snout.protrudeY = Math.sin(a[0]) * protrude;
+
+    // Single source of truth for the body silhouette + ribbon mesh — same
+    // helper the blog figures call. Pooled scratch keeps this allocation-free
+    // per frame.
+    const mesh = buildBodyMesh(
+      j,
+      a,
+      this.bodyWidth,
+      snout,
+      segments,
+      this._bodyMesh,
     );
-    const ringUV = catmullRomClosedInto(bodyUV, CURVE_SEGMENTS, this._ringUV);
 
-    // Spine centerline (v=0.5), sampled by u. Ear-clipping the outline gave a
-    // bend-dependent topology that remapped the pattern; instead stitch a
-    // ribbon from this centerline to each boundary point at the same u.
-    const clU = this._clU;
-    const clP = this._clP;
-    let m = 0;
-    clU[m] = SNOUT_U_TIP;
-    clP[m] = this.posInto(this._clEnd0, 0, 0, tipLenNow);
-    clP[m].x += fwdX;
-    clP[m].y += fwdY;
-    m++;
-    for (let i = 0; i < BODY_SEGMENTS; i++) {
-      clU[m] = i / (BODY_SEGMENTS - 1);
-      clP[m] = j[i];
-      m++;
-    }
-    clU[m] = 1 + TIP_U_OVERSHOOT;
-    clP[m] = this.posInto(this._clEnd1, BODY_SEGMENTS - 1, Math.PI, 0);
-    m++;
-    const clLen = m;
-    const centerAt = (u: number): Vec2 => {
-      const cs = this._center;
-      if (u <= clU[0]) {
-        cs.x = clP[0].x;
-        cs.y = clP[0].y;
-        return cs;
-      }
-      const li = clLen - 1;
-      if (u >= clU[li]) {
-        cs.x = clP[li].x;
-        cs.y = clP[li].y;
-        return cs;
-      }
-      for (let i = 1; i < clLen; i++) {
-        if (u <= clU[i]) {
-          const t = (u - clU[i - 1]) / (clU[i] - clU[i - 1]);
-          const a0 = clP[i - 1];
-          const a1 = clP[i];
-          cs.x = a0.x + (a1.x - a0.x) * t;
-          cs.y = a0.y + (a1.y - a0.y) * t;
-          return cs;
-        }
-      }
-      cs.x = clP[li].x;
-      cs.y = clP[li].y;
-      return cs;
-    };
-
-    const n = ringPos.length;
     const bodyBase = vLen / FLOATS_PER_VERT;
-    for (let k = 0; k < n; k++) {
-      const rp = ringPos[k];
-      const ru = ringUV[k];
-      const cp = centerAt(ru.x);
-      // 2k = boundary vertex, 2k+1 = its centerline partner.
-      vbuf[vLen++] = rp.x;
-      vbuf[vLen++] = rp.y;
+    const mVerts = mesh.verts;
+    const mUVs = mesh.uvs;
+    for (let k = 0; k < mVerts.length; k++) {
+      const p = mVerts[k];
+      const u = mUVs[k];
+      vbuf[vLen++] = p.x;
+      vbuf[vLen++] = p.y;
       vbuf[vLen++] = BASE[0];
       vbuf[vLen++] = BASE[1];
       vbuf[vLen++] = BASE[2];
       vbuf[vLen++] = BASE[3];
-      vbuf[vLen++] = ru.x;
-      vbuf[vLen++] = ru.y;
-      vbuf[vLen++] = cp.x;
-      vbuf[vLen++] = cp.y;
-      vbuf[vLen++] = BASE[0];
-      vbuf[vLen++] = BASE[1];
-      vbuf[vLen++] = BASE[2];
-      vbuf[vLen++] = BASE[3];
-      vbuf[vLen++] = ru.x;
-      vbuf[vLen++] = CENTER_V;
+      vbuf[vLen++] = u.x;
+      vbuf[vLen++] = u.y;
     }
-    for (let k = 0; k < n; k++) {
-      const k2 = (k + 1) % n;
-      const r0 = bodyBase + 2 * k;
-      const c0 = bodyBase + 2 * k + 1;
-      const r1 = bodyBase + 2 * k2;
-      const c1 = bodyBase + 2 * k2 + 1;
-      ibuf[iLen++] = r0;
-      ibuf[iLen++] = r1;
-      ibuf[iLen++] = c1;
-      ibuf[iLen++] = r0;
-      ibuf[iLen++] = c1;
-      ibuf[iLen++] = c0;
+    const mIdx = mesh.indices;
+    for (let k = 0; k < mIdx.length; k++) {
+      ibuf[iLen++] = bodyBase + mIdx[k];
     }
 
     // Dorsal fin: emitted after the body so it paints on top.
@@ -895,6 +815,7 @@ export class Fish {
     const geo = this.geo;
     geo.vCount = vLen;
     geo.iCount = iLen;
+    geo.bodyIdxStart = bodyIdxStart;
     geo.shadowIdxStart = shadowIdxStart;
     geo.dorsalIdxStart = dorsalIdxStart;
     geo.finCount = finLen;

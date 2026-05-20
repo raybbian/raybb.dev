@@ -5,6 +5,7 @@ import createMDX from "@next/mdx";
 const nextConfig: NextConfig = {
   // Allow .md/.mdx files to be pages and route segments.
   pageExtensions: ["ts", "tsx", "md", "mdx", "js", "jsx"],
+  allowedDevOrigins: ["*.trycloudflare.com"],
   turbopack: {
     rules: {
       // Import shader sources (*.glsl) verbatim as default-exported strings
@@ -20,8 +21,12 @@ const nextConfig: NextConfig = {
 const withMDX = createMDX({
   options: {
     // String names: Turbopack can't pass JS function plugins to Rust.
-    remarkPlugins: ["remark-gfm"],
-    rehypePlugins: ["rehype-slug", "rehype-autolink-headings"],
+    remarkPlugins: ["remark-gfm", "remark-math"],
+    rehypePlugins: [
+      "@myriaddreamin/rehype-typst",
+      path.resolve(process.cwd(), "rehype-strip-typst-namespaces.mjs"),
+      "rehype-slug",
+    ],
   },
 });
 

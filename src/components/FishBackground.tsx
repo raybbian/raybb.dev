@@ -17,7 +17,7 @@ import { mag, sub, mulberry32, type Vec2 } from "@/lib/math";
 import { pickKoiColors } from "@/sim/koiPattern";
 import { instrumentGl } from "@/lib/glPerf";
 
-const FISH_COUNT = 9;
+const FISH_COUNT = 6;
 const FISH_SCALE_MEAN = 0.475; // 5% smaller than the original school
 const FISH_SCALE_VAR = 0.2; // +/- fraction around the mean
 // Growth cap = the pre-reduction rng max (old mean 0.5 * (1 + var)). Feeding
@@ -379,8 +379,7 @@ export default function FishBackground() {
         const fps = (fpsFrames * 1000) / span;
         const ms = span / fpsFrames;
         const cpu = cpuAccum / fpsFrames;
-        const gpu =
-          glPerf.gpuMs >= 0 ? `${glPerf.gpuMs.toFixed(1)} ms` : "n/a";
+        const gpu = glPerf.gpuMs >= 0 ? `${glPerf.gpuMs.toFixed(1)} ms` : "n/a";
         const { calls, verts, tris } = glPerf.stats;
         fpsEl.textContent =
           `${fps.toFixed(0)} fps  ${ms.toFixed(1)} ms\n` +
@@ -478,7 +477,15 @@ export default function FishBackground() {
       // on top of the water pass, so no ripple/refraction touches them.
       water.beginScene();
       for (const { fish, geo, palette } of ordered) {
-        renderer.draw(geo, width, height, fish.depth, palette, worldY, now / 1000);
+        renderer.draw(
+          geo,
+          width,
+          height,
+          fish.depth,
+          palette,
+          worldY,
+          now / 1000,
+        );
       }
 
       // Treats sink, so render into the scene MRT before the water pass —
