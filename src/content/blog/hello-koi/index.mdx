@@ -51,7 +51,7 @@ For general polygons, one method for triangularization is called ear clipping. E
   caption="Ear clipping, step by step."
 />
 
-This results in a runtime of $O(n^2)$. For small $n$ this is okay. However, because the fish's body is dynamic, we would be required to run this algorithm every single frame. We can do a lot better than this.
+This results in a runtime of $O(n^2)$, meaning a doubling in the number of vertices corresponds to a quadrupling of the running time. For small $n$ this is okay. However, because the fish's body is dynamic, we would be required to run this algorithm every single frame. We can do a lot better than this.
 
 Once again, the optimization lies in pushing past generalization. We can clearly identify a property of our use-case that allows for optimization: the fish body is formed from a spine, with points that extend perpendicular to the spine forming the contour. See if you can identify a potential triangularization before clicking on the figure below. Hint: it doesn't change depending on the shape of the fish.
 
@@ -133,13 +133,19 @@ Our fish now actually look like koi fish!
 
 ## Fish Behavior
 
-<Todo />
+The fish behavior as a whole can be split up into several factors, each working together to dictate a fish's heading. Certain factors are weighted more than others, which allow fish to avoid a mouse cursor, while still wandering if they'd like. All in all, the factors are:
+- Wandering (1x): another noise texture is sampled, which determines which direction the fish should go in, without any other factors.
+- Containment (0-5x): as fish get closer to the edge, the factor pushing the fish away gets stronger. This keeps fish centered on the screen.
+- Avoidance (0-7x): weight ramps up as fish get closer to the cursor, causing them to dart away if near danger.
+- Seeking (6x): fish seek any treat within a 1024 pixel radius (they are hungry, feed them)!
 
 <Figure
   id="fish-behavior"
   aspect={2.4}
   caption="Click to drop treats, move the cursor near a fish to spook it."
 />
+
+The amount the fish can turn in one frame is capped, so the fish dont randomly bend in half. Finally, variations in speed are added depending on behavior in order to make the fish a little more lively and sentient-looking.
 
 ## Lotuses, Lilypads
 
@@ -181,13 +187,29 @@ Right now, our water is just one solid color. Its flat, and doesn't look quite l
   caption="Drag the handle: flat water on the left, the full toon shader on the right."
 />
 
-Water shaders usually consist of 3 parts. First, the deeper the water is, the more light it should reflect. Fish at deeper levels should appear more blue. Second, water should foam up in shallow water and against objects in the water, as well as cause ripples. Third, water should bend the light as it penetrates the water's surface, causing the scene behind the surface to warp.
+Water shaders usually consist of 3 parts. First, the deeper the water is, the more light it should reflect. Fish at deeper levels should appear more blue. Second, water should foam up in shallow water and against objects in the water, as well as cause ripples. Third, water should bend the light as it penetrates the water's surface, causing the scene behind the surface to warp. To tackle this problem efficiently, we once again find optimizations for our use case! 
 
-To tackle this problem efficiently, we once again find optimizations for our use case! Let's handle the first feature. Because our scene is 2D and perfectly top down, we can just tint the fish more blue the deeper it is.
+### Tinting
 
-<Todo />
+Let's handle the first feature. Because our scene is 2D and perfectly top down, we can just tint the fish more blue the deeper it is. No need to add extra complexity, or render multiple water quads.
 
-The third case is even more interesting. By rendering the scene from the bottom up, we can notice that by the time we want to render the water layer, everything under the water has already been rendered. To refract the water, we can simply sample this already-rendered layer, displacing each pixel by a certain offset.
+### Foam
+
+The second case is what I'm least happy about. Traditionally, 3D water shaders use depth testing to identify areas near land: if the difference between the water height and the bank height is small, that means that something emerges from the water soon. Unfortunately for us, there is no depth to test in 2D.
+
+As all of the objects that sit on the water should produce roughly circular ripples, we can simply hardcode the foam to be circular (allowing a wedge to be cut out, for lilypads). We render each ripple to two textures, one representing the intensity of the foam/reflection, and one representing the intensity of the displacement caused by the ripple.
+
+<Figure
+  id="ripple-textures"
+  aspect={2.4}
+  caption="Left (foam mask) uses a MAX blend, so overlapping rings cap at the brighter contribution; right (displacement) uses additive blending, so the signed offsets stack into a brighter ridge where the rings meet. Drag horizontally to change the spacing."
+/>
+
+Then, we reference these two textures while rendering the water, using the intensity texture to determine the color, and the displacement texture to determine the refraction offset (more on this later).
+
+### Refraction
+
+The third case is more interesting. By rendering the scene from the bottom up, we can notice that by the time we want to render the water layer, everything under the water has already been rendered. To refract the water, we can simply sample this already-rendered layer, displacing each pixel by a certain offset.
 
 "How do we know how much to displace each pixel?" you might ask? Well, with noise of course! In this case, we use Fractal Brownian Motion, shown below:
 
@@ -197,7 +219,7 @@ The third case is even more interesting. By rendering the scene from the bottom 
   caption="The water shader uses FBM to refract pixels."
 />
 
-See it in action below:
+Remember the displacement mask that we mentioned in the previous section on ripples? We can sample from that texture in order to vary the intensity of the water refraction. See it in action below, where the refraction is stronger next to the ripples of the lilypad:
 
 <Figure
   id="water-refract"
@@ -205,8 +227,20 @@ See it in action below:
   caption="The same FBM displacement applied to a striped pattern."
 />
 
+However, it turns out that calculating fractal brownian motion for every pixel, every frame, is still quite taxing on the GPU. Fortunately for us, we don't have to do that! Simply sliding a FBM texture (generated once) across the screen gives us a result we are happy with:
+
+<Figure
+  id="baked-noise"
+  aspect={2.4}
+  caption="One FBM calculation at the beginning, roughly the same result."
+/>
+
+Yippee! Now, we have water shaders that make the scene look much more alive!
+
 ## Efficient Stylized Shadows 
 
-<Todo />
+Despite all of this, our scene is still looking rather flat. That's because it is: there are no shadows at all! Lotuses and lilypads should cast shadows on the water, fish should cast shadows on other fish, and these shadows need to dance to reflect the motion of the water.
+
+<Todo/>
 
 </FiguresProvider>

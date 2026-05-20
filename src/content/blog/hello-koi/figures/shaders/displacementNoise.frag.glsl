@@ -1,9 +1,14 @@
 #version 300 es
 precision mediump float;
+// Teaching figure: evaluates time-varying FBM-difference displacement per
+// pixel (the original n_displacement math from src/render/shaders/noise.glsl).
+// The optimization that bakes this field into a texture is shown in the
+// `baked-noise` figure that follows; this one demonstrates what's being
+// approximated.
 #include "../../../../../render/shaders/noise.glsl"
 in vec2 v_uv;
-uniform vec2 u_uvScale;
-uniform vec2 u_pan;
+uniform vec2 u_uvScale;     // panel size in noise lattice units
+uniform vec2 u_pan;         // user pan offset (drag to scroll)
 uniform float u_time;
 out vec4 o;
 
@@ -16,6 +21,8 @@ void main() {
   vec2 disp = n_displacement(nuv, t);
   vec3 col = vec3(disp * 0.5 + 0.5, 0.0);
 
+  // Faint lattice grid: one cell per integer step in noise space so the
+  // reader can see the underlying value-noise lattice.
   vec2 g = abs(fract(nuv) - 0.5);
   vec2 gw = fwidth(nuv);
   float line = min(g.x / gw.x, g.y / gw.y);

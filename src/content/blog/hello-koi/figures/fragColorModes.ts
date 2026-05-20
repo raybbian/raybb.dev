@@ -1,13 +1,15 @@
 import type { FigureModule, Sketch } from "@/figures/types";
 import { fishBodyMesh } from "./fishMesh";
 import { Fish } from "@/sim/Fish";
-import { pickKoiColors } from "@/sim/koiPattern";
-import { mulberry32 } from "@/lib/math";
+import { DEFAULT_KOI_COLORS } from "@/sim/koiPattern";
 import { PALETTE as P } from "@/figures/palette";
+import { figureScreenScale, FIGURE_FISH_SCALE } from "@/figures/scale";
+import { createFigureFish } from "@/figures/figureFish";
+import { createHeadCamera, SmoothFollowCamera } from "@/figures/fishCamera";
+import { drawVerticalDivider } from "@/figures/canvas2d";
 import type { Vec2 } from "@/lib/math";
 
 const SEGMENTS = 6;
-const FIGURE_SCALE = 0.4;
 const FIGURE_SEED = 0xa53f7b91;
 const FIGURE_NOISE_PHASE = 5.4;
 const WORLD_MULT = 3;
@@ -30,6 +32,7 @@ class FragColorSketch implements Sketch {
   private worldH = 0;
   private fish: Fish | null = null;
   private lastT: number | null = null;
+  private camera = new SmoothFollowCamera();
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -41,23 +44,26 @@ class FragColorSketch implements Sketch {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
-    this.worldW = (w / 2) * WORLD_MULT;
+    const panelW = w / 2;
+    this.worldW = panelW * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
-    const colors = pickKoiColors(mulberry32(FIGURE_SEED));
-    this.fish = new Fish(
-      { x: this.worldW / 2, y: this.worldH / 2 },
-      {
-        base: colors.base,
-        mid: colors.mid,
-        accent: colors.accent,
-        fin: colors.fin,
+    const screenScale = figureScreenScale(panelW);
+    const scale = FIGURE_FISH_SCALE * screenScale;
+    this.fish = createFigureFish({
+      origin: { x: this.worldW / 2, y: this.worldH / 2 },
+      colors: {
+        base: DEFAULT_KOI_COLORS.base,
+        mid: DEFAULT_KOI_COLORS.mid,
+        accent: DEFAULT_KOI_COLORS.accent,
+        fin: DEFAULT_KOI_COLORS.fin,
       },
-      0.4,
-      FIGURE_SCALE,
-      { noisePhaseHeading: FIGURE_NOISE_PHASE, seed: FIGURE_SEED },
-      FIGURE_SCALE,
-    );
+      scale,
+      screenScale,
+      seed: FIGURE_SEED,
+      noisePhase: { heading: FIGURE_NOISE_PHASE },
+    });
     this.lastT = null;
+    this.camera.reset();
   }
 
   frame(t: number) {
@@ -81,17 +87,17 @@ class FragColorSketch implements Sketch {
       fish.bodyWidth,
     );
 
-    // Camera = head. Map world verts to a given panel centre.
+    // Smoothed camera follow shared between panels: the head drifts off
+    // each panel's centre on turns, both panels see the same lag.
     const head = fish.spine.joints[0];
-    const toCanvas = (panelCx: number, v: Vec2): Vec2 => ({
-      x: panelCx + (v.x - head.x),
-      y: h / 2 + (v.y - head.y),
-    });
+    this.camera.follow(head.x, head.y, dt);
+    const leftCam = createHeadCamera(this.camera.x, this.camera.y, panelW / 2, h / 2);
+    const rightCam = createHeadCamera(this.camera.x, this.camera.y, panelW + panelW / 2, h / 2);
 
-    const drawTri = (panelCx: number, a: Vec2, b: Vec2, c: Vec2, u: number, v: number) => {
-      const ca = toCanvas(panelCx, a);
-      const cb = toCanvas(panelCx, b);
-      const cc = toCanvas(panelCx, c);
+    const drawTri = (cam: (v: Vec2) => Vec2, a: Vec2, b: Vec2, c: Vec2, u: number, v: number) => {
+      const ca = cam(a);
+      const cb = cam(b);
+      const cc = cam(c);
       ctx.fillStyle = hslString(u, 0.85, 0.4 + 0.3 * v);
       ctx.beginPath();
       ctx.moveTo(ca.x, ca.y);
@@ -113,14 +119,14 @@ class FragColorSketch implements Sketch {
       const a = mesh.verts[ia];
       const b = mesh.verts[ib];
       const c = mesh.verts[ic];
-      const ca = toCanvas(panelW / 2, a);
-      const cb = toCanvas(panelW / 2, b);
-      const cc = toCanvas(panelW / 2, c);
+      const ca = leftCam(a);
+      const cb = leftCam(b);
+      const cc = leftCam(c);
       const ccx = (ca.x + cb.x + cc.x) / 3;
       const ccy = (ca.y + cb.y + cc.y) / 3;
       const u = Math.max(0, Math.min(1, ccx / panelW));
       const v = Math.max(0, Math.min(1, ccy / h));
-      drawTri(panelW / 2, a, b, c, u, v);
+      drawTri(leftCam, a, b, c, u, v);
     }
     ctx.restore();
 
@@ -141,16 +147,11 @@ class FragColorSketch implements Sketch {
       const uvC = mesh.uvs[ic];
       const u = Math.max(0, Math.min(1, (uvA.x + uvB.x + uvC.x) / 3));
       const v = Math.max(0, Math.min(1, (uvA.y + uvB.y + uvC.y) / 3));
-      drawTri(panelW + panelW / 2, a, b, c, u, v);
+      drawTri(rightCam, a, b, c, u, v);
     }
     ctx.restore();
 
-    ctx.strokeStyle = P.divider;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(panelW, 16);
-    ctx.lineTo(panelW, h - 16);
-    ctx.stroke();
+    drawVerticalDivider(ctx, panelW, h, P.divider);
 
     ctx.fillStyle = P.hint;
     ctx.font = P.font;

@@ -4,6 +4,10 @@
 // below subtract near-equal O(1) values to ~0 on faded edges; mediump
 // cancellation there leaves a noisy dark fringe. WebGL2 guarantees frag highp.
 uniform highp sampler2D u_shadow; // RG = premultiplied (cov*height, coverage)
+// Shared tileable noise (RG = curl-noise centered at 0.5; B = scalar FBM)
+// declared once in noiseSampler.glsl so it can also be #include'd from
+// waterNoise.glsl in the same shader without redeclaring.
+#include "noiseSampler.glsl"
 uniform vec2 u_sunDir;      // shadow-fall dir, logical px (theme-lerped: down-right in light, down-left in dark)
 uniform vec2 u_shadowMargin; // max one-side floor projection, logical px: x grown BOTH sides, y on the bottom
 uniform float u_shadowK;    // logical px the shadow slides per unit height gap
@@ -71,33 +75,20 @@ float shadowHitWavy(vec2 uv, vec2 dispPx) {
 // Procedural "wavy" shadow. An underwater receiver (fish) carries no
 // refraction texture of its own, and the later water pass shifts receiver +
 // shadow together, so the cast silhouette can't churn relative to the body.
-// Reproduce the water pass's ambient refraction locally here instead. Noise is
-// self-named (sh*) so it never collides with a host shader's own hash/fbm;
-// kept in lockstep with refract.frag.glsl.
-const float SHADOW_WAVY_FREQ = 3.0;
+// Reproduce the water pass's ambient refraction locally here instead: sample
+// the shared curl-noise texture (RG channels) and scroll its UVs by time.
+// Replaces three FBM evaluations of value noise per pixel with one texel
+// fetch.
 const float SHADOW_WAVY_SPEED = 0.15;
+// Noise UV scale (texture periods per u_res.y). The shared noise texture has
+// 8 lattice cells at its base octave; this gives ~3 cells per u_res.y,
+// matching the previous SHADOW_WAVY_FREQ = 3.0 in shFbm units.
+const float SHADOW_NOISE_SCALE = 0.375;
 
 // Floor so near-coplanar fish->fish still shimmer faintly: the water pass
 // shifts body + baked shadow together, so a hard 0 would freeze the cast
 // silhouette rigidly to the body.
 const float SHADOW_WAVY_MIN = 0.12;
-
-float shHash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
-}
-float shVnoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(shHash(i), shHash(i + vec2(1, 0)), u.x),
-             mix(shHash(i + vec2(0, 1)), shHash(i + vec2(1, 1)), u.x), u.y);
-}
-float shFbm(vec2 p) {
-  float v = 0.0, a = 0.5;
-  for (int k = 0; k < 3; k++) { v += a * shVnoise(p); p *= 2.0; a *= 0.5; }
-  return v;
-}
 
 // The perturbed lookup coord shared by the real sample and the debug viz, so
 // the overlay always matches what's drawn. `uv` = receiver fragment in [0,1]
@@ -124,11 +115,13 @@ vec2 shadowWavyUV(vec2 uv, float time, float pxGain) {
   // height gap; sample the refraction THERE (shadowHit's projection sign).
   vec2 wuv = uv + vec2(u_sunDir.x, -u_sunDir.y) * (u_shadowK * gap) / u_res;
   vec2 px = vec2(wuv.x, 1.0 - wuv.y) * u_res;
-  vec2 np = px / u_res.y * SHADOW_WAVY_FREQ;
-  float t = time * SHADOW_WAVY_SPEED;
-  vec2 disp = vec2(
-    shFbm(np + vec2(t, 0.0)) - shFbm(np - vec2(t, 0.0)),
-    shFbm(np.yx + vec2(0.0, t)) - shFbm(np.yx - vec2(0.0, t)));
+  // Sample the tileable curl-noise texture; UV-scroll animates the field.
+  // The texture's RG centers at 0.5 with extent ~[0,1] after normalization,
+  // so subtracting 0.5 yields a signed displacement vector in ~[-0.5, 0.5].
+  vec2 nuv = px / u_res.y * SHADOW_NOISE_SCALE
+           + vec2(time * SHADOW_WAVY_SPEED * 0.4,
+                  time * SHADOW_WAVY_SPEED * 0.3);
+  vec2 disp = texture(u_noise, nuv).rg - 0.5;
 
   // Churn scales with the water column the occluding ray traverses BELOW the
   // refracting boundary, not the receiver's absolute depth. The boundary is

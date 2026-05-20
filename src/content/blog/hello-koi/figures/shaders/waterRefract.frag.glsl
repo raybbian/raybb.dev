@@ -1,5 +1,13 @@
 #version 300 es
 precision mediump float;
+// "Unoptimized" water shader figure: evaluates time-based FBM per pixel,
+// same as the production water shader did before the noise bake.
+//   - ambient refraction: n_displacement (FBM-difference vector field)
+//   - foam-width variation: n_fbm
+//   - crest-ring width variation: n_fbm
+// The baked-noise figure that follows shows the same scene with the FBM
+// replaced by a texture lookup — visually indistinguishable, dramatically
+// cheaper. Constants kept aligned with production water tuning.
 #include "../../../../../render/shaders/noise.glsl"
 in vec2 v_uv;
 uniform sampler2D u_scene;  // offscreen capture of the single lilypad
@@ -18,21 +26,25 @@ uniform float u_sheen;
 uniform float u_rippleCrest;
 out vec4 o;
 
-// Ripple/foam tunables — the shader's own knobs (band width, ring AA), not
-// water-colour parameters, so importing them from TS would just shift the
-// duplication. The colour + mix constants above ARE the ones that matter.
+// FBM lattice frequencies + time-scroll rates, the values production used
+// before the bake.
 const float REFRACT_FREQ = 3.0;
 const float REFRACT_SPEED = 0.15;
+// Stronger than production's REFRACT_PX so the FBM-driven wobble reads
+// clearly in the figure — this is the "before optimization" snapshot, and
+// readers should see exactly how much per-pixel displacement the FBM
+// produces. The baked-noise figure that follows is calibrated to the
+// production level.
 const float REFRACT_STRENGTH = 6.0;
-const float FOAM_PX = 10.0;
-const float FOAM_VAR = 5.0;
 const float FOAM_FREQ = 4.0;
 const float FOAM_SPEED = 0.5;
+const float WIDTH_FREQ = 2.2;
+const float WIDTH_SPEED = 0.2;
+const float FOAM_PX = 10.0;
+const float FOAM_VAR = 2.5;
 const float RING_W_PX = 4.0;
 const float RING_W_VAR = 3.0;
-const float WIDTH_FREQ = 2.2;
 const float WIDTH_RADIAL = 0.012;
-const float WIDTH_SPEED = 0.2;
 const float RING_AA_PX = 0.4;
 const float RIPPLE_WAVELEN = 42.0;
 const float RIPPLE_BAND = 50.0;
@@ -60,6 +72,7 @@ float sdNotched(vec2 d, float radius, float rot, float notch) {
 }
 
 float crestRing(float pd, vec2 nd, float seed) {
+  // 3-octave FBM evaluated PER PIXEL — the cost the bake eliminates.
   float w = n_fbm(nd * WIDTH_FREQ
                   + vec2(seed + pd * WIDTH_RADIAL, u_time * WIDTH_SPEED), 3);
   float halfW = RING_W_PX + (w - 0.5) * 2.0 * RING_W_VAR;
@@ -80,8 +93,8 @@ vec4 sampleStripes(vec2 uv) {
 void main() {
   vec2 px = vec2(v_uv.x, 1.0 - v_uv.y) * u_res;
 
-  // Ambient FBM displacement, the same the production water pass bakes into
-  // u_refract.
+  // Ambient displacement: time-based FBM difference, the literal expression
+  // the production water shader used to evaluate every frame.
   vec2 nuv = px / u_res.y * REFRACT_FREQ;
   vec2 offsetPx = n_displacement(nuv, u_time * REFRACT_SPEED) * REFRACT_STRENGTH;
 
@@ -98,6 +111,7 @@ void main() {
     offsetPx += nd
               * sin((pd / RIPPLE_WAVELEN - u_time * RIPPLE_SPEED + u_lilySeed) * 6.2831853)
               * RIPPLE_PUSH * edgeFade;
+    // Foam-width variation: another 3-octave FBM evaluation per pixel.
     float fw = FOAM_PX
              + (n_fbm(nd * FOAM_FREQ + vec2(u_lilySeed, u_time * FOAM_SPEED), 3) - 0.5)
                * 2.0 * FOAM_VAR;
@@ -117,9 +131,7 @@ void main() {
 
   // Bottom-up composite. Water bg -> refracted stripes (in rect) ->
   // mix(everything-so-far, deep, sheen) -> foam + crest in WATER only ->
-  // lily silhouette on top. The sheen mix is the production water shader's
-  // first colour step (`col = mix(col, u_deep, SHEEN)`); foam + ring use the
-  // same `mask * RIPPLE_CREST` brightness boost.
+  // lily silhouette on top.
   vec3 col = u_bg;
   col = mix(col, stripes.rgb, stripes.a);
   col = mix(col, u_deep, u_sheen);

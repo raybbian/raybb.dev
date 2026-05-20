@@ -1,4 +1,4 @@
-import { createProgram } from "@/lib/gl";
+import { FullscreenShader } from "@/figures/FullscreenShader";
 import type { KoiColors } from "@/sim/koiPattern";
 
 // Shared pattern-bake program. Both `FishRenderer.setPalettes` (full body UV
@@ -9,11 +9,10 @@ import type { KoiColors } from "@/sim/koiPattern";
 //
 // The caller owns the framebuffer + viewport — this class only owns the
 // program and the empty VAO that drives the fullscreen-triangle vertex
-// shader (`water.vert.glsl`).
+// shader.
 export class PatternBakeProgram {
   private gl: WebGL2RenderingContext;
-  private prog: WebGLProgram;
-  private vao: WebGLVertexArrayObject;
+  private shader: FullscreenShader;
   private uBase: WebGLUniformLocation | null;
   private uMid: WebGLUniformLocation | null;
   private uAccent: WebGLUniformLocation | null;
@@ -21,18 +20,15 @@ export class PatternBakeProgram {
 
   constructor(gl: WebGL2RenderingContext, vert: string, frag: string) {
     this.gl = gl;
-    this.prog = createProgram(gl, vert, frag);
-    this.vao = gl.createVertexArray()!;
-    this.uBase = gl.getUniformLocation(this.prog, "u_base");
-    this.uMid = gl.getUniformLocation(this.prog, "u_mid");
-    this.uAccent = gl.getUniformLocation(this.prog, "u_accent");
-    this.uSeed = gl.getUniformLocation(this.prog, "u_seed");
+    this.shader = new FullscreenShader(gl, frag, vert);
+    this.uBase = this.shader.uniform("u_base");
+    this.uMid = this.shader.uniform("u_mid");
+    this.uAccent = this.shader.uniform("u_accent");
+    this.uSeed = this.shader.uniform("u_seed");
   }
 
   use(): void {
-    const gl = this.gl;
-    gl.useProgram(this.prog);
-    gl.bindVertexArray(this.vao);
+    this.shader.use();
   }
 
   setPalette(p: KoiColors): void {
@@ -45,18 +41,16 @@ export class PatternBakeProgram {
   }
 
   getUniformLocation(name: string): WebGLUniformLocation | null {
-    return this.gl.getUniformLocation(this.prog, name);
+    return this.shader.uniform(name);
   }
 
   // Draws the fullscreen triangle. Caller has already bound the destination
   // framebuffer and set the viewport.
   bake(): void {
-    this.gl.drawArrays(this.gl.TRIANGLES, 0, 3);
+    this.shader.drawTriangle();
   }
 
   dispose(): void {
-    const gl = this.gl;
-    gl.deleteProgram(this.prog);
-    gl.deleteVertexArray(this.vao);
+    this.shader.dispose();
   }
 }

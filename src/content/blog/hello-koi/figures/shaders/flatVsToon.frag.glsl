@@ -1,6 +1,9 @@
 #version 300 es
 precision mediump float;
-#include "../../../../../render/shaders/noise.glsl"
+// Foam + crest sampling helpers shared with production (waterNoise.glsl);
+// the figure reads exactly the same baked noise field the production
+// rippleMask.frag.glsl reads.
+#include "../../../../../render/shaders/waterNoise.glsl"
 in vec2 v_uv;
 uniform sampler2D u_scene;  // offscreen FBO with the lily + lotus on transparent bg
 uniform vec2 u_res;         // panel size, px (logical)
@@ -25,19 +28,14 @@ uniform float u_seed[MAX_DISKS];
 
 out vec4 o;
 
-// Per-source ripple/foam tunables. These ARE inlined here — they're the
-// shader's own knobs (band width, ring AA), not water-colour parameters, so
-// importing them from TS would just shift the duplication without removing
-// it. The colour + mix constants above are the values the user cares about.
+// Per-source ripple/foam tunables. Match production rippleMask.frag.glsl's
+// values so the figure reproduces the same field; UV scales + scroll rates
+// live in waterNoise.glsl (single source of truth, no chance of drifting).
 const float FOAM_PX = 10.0;
-const float FOAM_VAR = 5.0;
-const float FOAM_FREQ = 4.0;
-const float FOAM_SPEED = 0.5;
+const float FOAM_VAR = 2.5;
 const float RING_W_PX = 4.0;
 const float RING_W_VAR = 3.0;
-const float WIDTH_FREQ = 2.2;
 const float WIDTH_RADIAL = 0.012;
-const float WIDTH_SPEED = 0.2;
 const float RING_AA_PX = 0.4;
 const float RIPPLE_WAVELEN = 42.0;
 const float RIPPLE_BAND = 50.0;
@@ -61,11 +59,11 @@ float sdNotched(vec2 d, float radius, float rot, float notch) {
   return max(length(q) - radius, -infW);
 }
 
-// Travelling crest ring (water.frag.glsl crestRing): a single bright band that
-// rides the cyclic phase outward, decorrelated per ring by FBM-modulated width.
+// Travelling crest ring (production rippleMask.frag.glsl crestRing): one
+// bright band riding the cyclic phase outward, width decorrelated per ring
+// by a shared baked-noise lookup instead of an FBM loop.
 float crestRing(float pd, vec2 nd, float seed) {
-  float w = n_fbm(nd * WIDTH_FREQ
-                  + vec2(seed + pd * WIDTH_RADIAL, u_time * WIDTH_SPEED), 3);
+  float w = wn_crestWidthNoise(nd, seed, pd, WIDTH_RADIAL, u_time);
   float halfW = RING_W_PX + (w - 0.5) * 2.0 * RING_W_VAR;
   float cyc = fract(pd / RIPPLE_WAVELEN - u_time * RIPPLE_SPEED + seed);
   float dn = min(cyc, 1.0 - cyc) * RIPPLE_WAVELEN;
@@ -101,9 +99,9 @@ void main() {
     vec2 nd = d / max(length(d), 1e-3);
     float seed = u_seed[i];
     float edgeFade = 1.0 - smoothstep(RIPPLE_BAND - RIPPLE_FADE, RIPPLE_BAND, pd);
-    float fw = FOAM_PX
-             + (n_fbm(nd * FOAM_FREQ + vec2(seed, u_time * FOAM_SPEED), 3) - 0.5)
-               * 2.0 * FOAM_VAR;
+    // Foam-width variation: shared baked noise sample, identical to prod.
+    float fwn = wn_foamWidthNoise(nd, seed, u_time);
+    float fw = FOAM_PX + (fwn - 0.5) * 2.0 * FOAM_VAR;
     foam = max(foam, 1.0 - smoothstep(fw - AA_PX, fw + AA_PX, pd));
     ring = max(ring, crestRing(pd, nd, seed) * edgeFade);
   }

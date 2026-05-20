@@ -3,12 +3,10 @@ import { LotusRenderer } from "@/render/LotusRenderer";
 import { LOTUS_INST_FLOATS } from "@/sim/Lotuses";
 import { createProgram } from "@/lib/gl";
 import { PALETTE as P } from "@/figures/palette";
+import { SliderUI } from "@/figures/SliderUI";
 
-const SLIDER_BAND = 44;
-const SLIDER_PAD_X = 28;
 const TRACK_H = 4;
-const KNOB_R = 9;
-const HIT_PAD = 10;
+const KNOB_RADIUS = 9;
 const TRACK_COLOR: [number, number, number, number] = [0.6, 0.7, 0.8, 0.4];
 const KNOB_COLOR: [number, number, number, number] = [0.18, 0.83, 0.75, 1.0];
 
@@ -58,10 +56,9 @@ class LotusPetalMixSketch implements Sketch {
   private rectColorLoc: WebGLUniformLocation;
   private rectCircleLoc: WebGLUniformLocation;
   private petalData = new Float32Array(LOTUS_INST_FLOATS);
+  private slider: SliderUI;
   private w = 0;
   private h = 0;
-  private bulge = 0.55;
-  private dragging = false;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -73,6 +70,7 @@ class LotusPetalMixSketch implements Sketch {
     this.rectColorLoc = gl.getUniformLocation(this.rectProg, "u_color")!;
     this.rectCircleLoc = gl.getUniformLocation(this.rectProg, "u_circle")!;
     this.rectVao = gl.createVertexArray()!;
+    this.slider = new SliderUI({ knobRadius: KNOB_RADIUS, initial: 0.55 });
   }
 
   setTheme(theme: "light" | "dark") {
@@ -83,7 +81,8 @@ class LotusPetalMixSketch implements Sketch {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
-    const petalH = Math.max(1, h - SLIDER_BAND);
+    this.slider.layout(w, h);
+    const petalH = Math.max(1, h - this.slider.reservedBand);
     const len = Math.min(w, petalH) * 0.5625; // 1.25x the original 0.45
     const cx = w * 0.5 - len * 0.5;
     const cy = petalH * 0.5;
@@ -99,24 +98,8 @@ class LotusPetalMixSketch implements Sketch {
     d[12] = 1.0;
   }
 
-  private trackGeom() {
-    const y = this.h - SLIDER_BAND / 2;
-    const x0 = SLIDER_PAD_X;
-    const x1 = this.w - SLIDER_PAD_X;
-    return { y, x0, x1, w: Math.max(1, x1 - x0) };
-  }
-
   pointer(p: PointerInfo) {
-    const { y, x0, x1, w } = this.trackGeom();
-    if (p.type === "down" && Math.abs(p.y - y) < SLIDER_BAND / 2 + HIT_PAD) {
-      this.dragging = true;
-    } else if (p.type === "up") {
-      this.dragging = false;
-    }
-    if (this.dragging && p.down) {
-      const cx = Math.min(x1, Math.max(x0, p.x));
-      this.bulge = (cx - x0) / w;
-    }
+    this.slider.pointer(p);
   }
 
   private drawRect(
@@ -137,19 +120,18 @@ class LotusPetalMixSketch implements Sketch {
 
   private drawSlider() {
     const gl = this.gl;
-    const { y, x0, x1, w } = this.trackGeom();
+    const g = this.slider.geometry();
     gl.useProgram(this.rectProg);
     gl.uniform2f(this.rectResLoc, this.w, this.h);
     gl.bindVertexArray(this.rectVao);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    this.drawRect(x0, y - TRACK_H / 2, x1, y + TRACK_H / 2, TRACK_COLOR);
-    const kx = x0 + this.bulge * w;
+    this.drawRect(g.x0, g.y - TRACK_H / 2, g.x1, g.y + TRACK_H / 2, TRACK_COLOR);
     this.drawRect(
-      kx - KNOB_R,
-      y - KNOB_R,
-      kx + KNOB_R,
-      y + KNOB_R,
+      g.knobX - KNOB_RADIUS,
+      g.y - KNOB_RADIUS,
+      g.knobX + KNOB_RADIUS,
+      g.y + KNOB_RADIUS,
       KNOB_COLOR,
       true,
     );
@@ -163,7 +145,7 @@ class LotusPetalMixSketch implements Sketch {
     gl.clearColor(P.bgGL[0], P.bgGL[1], P.bgGL[2], P.bgGL[3]);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (w === 0 || h === 0) return;
-    this.renderer.setBulge(this.bulge);
+    this.renderer.setBulge(this.slider.value);
     this.renderer.draw(this.petalData, 1, w, h, 0);
     this.drawSlider();
   }

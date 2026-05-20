@@ -7,7 +7,6 @@ class LilypadWiresSketch implements Sketch {
   animated = false;
   private gl: WebGL2RenderingContext;
   private renderer: LilypadRenderer;
-  private dummyTex: WebGLTexture;
   private data = new Float32Array(LILYPAD_INST_FLOATS);
   private w = 0;
   private h = 0;
@@ -15,22 +14,6 @@ class LilypadWiresSketch implements Sketch {
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
     this.renderer = new LilypadRenderer(gl);
-    const tex = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA,
-      1,
-      1,
-      0,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      new Uint8Array([0, 0, 0, 0]),
-    );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    this.dummyTex = tex;
   }
 
   setTheme() {}
@@ -58,14 +41,13 @@ class LilypadWiresSketch implements Sketch {
     if (w === 0 || h === 0) return;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    this.renderer.draw(this.data, 1, w, h, 0, this.dummyTex, w, h);
+    this.renderer.draw(this.data, 1, w, h, 0);
     this.renderer.drawWires(this.data, 1, w, h, 0, P.wireGL);
     gl.disable(gl.BLEND);
   }
 
   dispose() {
     this.renderer.dispose();
-    this.gl.deleteTexture(this.dummyTex);
   }
 }
 

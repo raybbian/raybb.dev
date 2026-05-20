@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  images: {
+    remotePatterns: [new URL("https://cdn.discordapp.com/**")],
+  },
 };
 
 const withMDX = createMDX({

@@ -1,18 +1,31 @@
-import { createProgram } from "@/lib/gl";
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import { createProgram, OffscreenTarget } from "@/lib/gl";
+import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
 import { LilypadRenderer } from "@/render/LilypadRenderer";
 import { LotusRenderer } from "@/render/LotusRenderer";
 import {
   DEEP_DARK,
+  DEEP_LIGHT,
   RIPPLE_CREST,
   SHEEN,
 } from "@/render/WaterRenderer";
-import { BG_DARK } from "@/render/frame";
+import { BG_DARK, BG_LIGHT } from "@/render/frame";
+import {
+  bindNoiseUniform,
+  buildNoiseTexture,
+  NOISE_TEX_UNIT,
+} from "@/render/noiseTexture";
+import { ThemeMixer, lerpRgb } from "@/figures/theme";
 import { LILYPAD_INST_FLOATS } from "@/sim/Lilypads";
-import { LOTUS_INST_FLOATS } from "@/sim/Lotuses";
+import {
+  LOTUS_INST_FLOATS,
+  buildSingleLotusInstances,
+  lotusPetalCount,
+  lotusReach,
+} from "@/sim/Lotuses";
 import { hslToRgb } from "@/sim/koiPattern";
 import { mulberry32 } from "@/lib/math";
 import { PALETTE as P } from "@/figures/palette";
+import { FIGURE_FOAM_FRAC } from "@/figures/scale";
 import VS from "@/render/shaders/water.vert.glsl";
 import FS from "./shaders/flatVsToon.frag.glsl";
 
@@ -38,26 +51,7 @@ const PAD_SAT: [number, number] = [0.35, 0.6];
 const PAD_LIGHT: [number, number] = [0.28, 0.45];
 
 const LOTUS_RING_COUNT = 3;
-// Mirrors the constants in src/sim/Lotuses.ts (INNER_START, RING_STEP,
-// LEN_FRAC, HALF_FRAC, ring petal counts). Kept inline so the figure stays a
-// self-contained snapshot rather than reaching into sim internals — the
-// production sim builds these from a random band layout, which would be
-// overkill (and time-varying) here.
-const INNER_START = 0.08;
-const RING_STEP = 0.17;
-const LEN_FRAC = [0.48, 0.58];
-const HALF_FRAC = [0.27, 0.34];
-const PETALS_INNER = 5;
-const PETALS_OUTER = 10;
-const FLUTTER_AMP = 0.025;
-const FLUTTER_W = 1.6;
-// Foam disk follows Lotuses.RIPPLE_RADIUS_FRAC (0.6) of reach: pulls the
-// foam collar inside the petals so it overlaps the bloom edge.
-const LOTUS_RIPPLE_FRAC = 0.6;
-
 const TAU = Math.PI * 2;
-const PINK_HUE = 0.95;
-const BLUE_HUE = 0.575;
 
 const lerp = (lo: number, hi: number, t: number) => lo + (hi - lo) * t;
 
@@ -73,16 +67,8 @@ interface LotusPlacement {
   x: number; y: number;
   size: number;
   baseAngle: number;
-  reach: number; // outermost petal tip
+  reach: number; // outermost petal tip, from sim/Lotuses.lotusReach
   seed: number;
-}
-
-// Compute the lotus outermost-petal tip distance from its centre. The figure
-// places lotuses by `reach` so a bloom never overlaps another bloom or a pad
-// rim. Matches src/sim/Lotuses.ts placeBandLotuses computation.
-function lotusReachFor(size: number): number {
-  const maxInner = INNER_START + RING_STEP * (LOTUS_RING_COUNT - 1);
-  return size * (maxInner + LEN_FRAC[1]);
 }
 
 // Rejection-sampled layout. Each item is checked against every already-placed
@@ -132,7 +118,7 @@ function generateLayout(
 
   for (let attempt = 0; attempt < MAX_PLACE_ATTEMPTS && lotuses.length < LOTUS_COUNT; attempt++) {
     const size = h * lerp(LOTUS_SIZE_FRAC[0], LOTUS_SIZE_FRAC[1], rng());
-    const reach = lotusReachFor(size);
+    const reach = lotusReach(size, LOTUS_RING_COUNT);
     const x = pad + reach + rng() * Math.max(0, w - 2 * (pad + reach));
     const y = pad + reach + rng() * Math.max(0, h - 2 * (pad + reach));
     if (!fits(x, y, reach) || overlaps(x, y, reach)) continue;
@@ -145,66 +131,6 @@ function generateLayout(
   }
 
   return { lilies, lotuses };
-}
-
-// Petal count for one lotus (3 rings, ringPetals interpolated between inner
-// and outer). Same formula as buildLotusPetals; extracted so we can size the
-// instance buffer up front.
-function lotusPetalCount(): number {
-  let n = 0;
-  for (let j = 0; j < LOTUS_RING_COUNT; j++) {
-    const fr = j / (LOTUS_RING_COUNT - 1);
-    n += Math.round(PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr);
-  }
-  return n;
-}
-
-// Writes one bloom's petal instances into `out` starting at index `o` (in
-// floats). Returns the new offset. Mirrors the per-frame loop in
-// src/sim/Lotuses.ts buildInstances().
-function writeLotusPetals(
-  out: Float32Array, o: number,
-  cx: number, cy: number, size: number, baseAngle: number,
-  t: number,
-): number {
-  // Outermost ring first: petals are alpha-blended in draw order, so inner
-  // rings end up on top — same paint order the production Lotuses.ts uses.
-  for (let j = LOTUS_RING_COUNT - 1; j >= 0; j--) {
-    const fr = j / (LOTUS_RING_COUNT - 1);
-    const inner = size * (INNER_START + RING_STEP * j);
-    const len = size * (LEN_FRAC[0] + (LEN_FRAC[1] - LEN_FRAC[0]) * fr);
-    const half = size * (HALF_FRAC[0] + (HALF_FRAC[1] - HALF_FRAC[0]) * fr);
-    const ringPetals = Math.round(
-      PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr,
-    );
-    // Saturated pink centre -> white outer ring (light theme tints).
-    const sat = 0.72 + (0.06 - 0.72) * fr;
-    const light = 0.74 + (0.97 - 0.74) * fr;
-    const c = hslToRgb(PINK_HUE, sat, light);
-    const satD = 0.85 + (0.8 - 0.85) * fr;
-    const lightD = 0.66 + (0.29 - 0.66) * fr;
-    const cD = hslToRgb(BLUE_HUE, satD, lightD);
-    const ringOffset = baseAngle + (j % 2) * (Math.PI / ringPetals);
-    for (let k = 0; k < ringPetals; k++) {
-      const angle0 = ringOffset + (k / ringPetals) * TAU;
-      const flutterP = (j * 7.3 + k * 2.1) % TAU;
-      const flutter = FLUTTER_AMP * Math.sin(t * FLUTTER_W + flutterP);
-      out[o++] = cx;
-      out[o++] = cy;
-      out[o++] = angle0 + flutter;
-      out[o++] = len;
-      out[o++] = half;
-      out[o++] = inner;
-      out[o++] = c[0];
-      out[o++] = c[1];
-      out[o++] = c[2];
-      out[o++] = cD[0];
-      out[o++] = cD[1];
-      out[o++] = cD[2];
-      out[o++] = flutterP;
-    }
-  }
-  return o;
 }
 
 class FlatVsToonSketch implements Sketch {
@@ -228,37 +154,40 @@ class FlatVsToonSketch implements Sketch {
   private uSeed: WebGLUniformLocation;
   private uHandleDot: WebGLUniformLocation;
   private vao: WebGLVertexArrayObject;
-
-  // Offscreen scene capture: lilies + lotuses drawn here every frame, then
-  // the composite reads it as a texture.
-  private fbo: WebGLFramebuffer;
-  private sceneTex: WebGLTexture;
-  private fboW = 0;
-  private fboH = 0;
-  // 1x1 zero shadow texture so the lily shader's u_shadow has something to
-  // sample. RGBA8 with all zeros makes shadowHit() return 0 everywhere.
-  private shadowTex: WebGLTexture;
+  private scene: OffscreenTarget;
+  // Shared baked noise (RG = curl, B = scalar FBM). Bound on the reserved
+  // unit so foam + crest sample exactly what production rippleMask.frag.glsl
+  // sees at runtime.
+  private noiseTex: WebGLTexture;
 
   private w = 0;
   private h = 0;
   private time = 0;
+  private lastT: number | null = null;
   private wiper = 0.5;
   private dragging = false;
+  private theme: ThemeMixer;
 
   // Layout-derived, regenerated on resize from FIGURE_SEED.
   private lilies: LilyPlacement[] = [];
   private lotuses: LotusPlacement[] = [];
   private lilyInst = new Float32Array(LILY_COUNT * LILYPAD_INST_FLOATS);
-  private lotusInst = new Float32Array(LOTUS_COUNT * lotusPetalCount() * LOTUS_INST_FLOATS);
+  private lotusPerBloomFloats = lotusPetalCount(LOTUS_RING_COUNT) * LOTUS_INST_FLOATS;
+  private lotusInst = new Float32Array(LOTUS_COUNT * this.lotusPerBloomFloats);
+  private lotusBloomScratch = new Float32Array(this.lotusPerBloomFloats);
   private lotusInstCount = 0;
   private diskBuf = new Float32Array(MAX_DISKS * 4);
   private notchBuf = new Float32Array(MAX_DISKS);
   private seedBuf = new Float32Array(MAX_DISKS);
 
-  constructor(gl: WebGL2RenderingContext) {
+  constructor(gl: WebGL2RenderingContext, theme: FigureTheme) {
     this.gl = gl;
     this.lily = new LilypadRenderer(gl);
     this.lotus = new LotusRenderer(gl);
+    this.theme = new ThemeMixer(theme);
+    // Snap the renderers to the initial mix so first paint is settled.
+    this.lily.setTheme(this.theme.mix);
+    this.lotus.setTheme(this.theme.mix);
     this.prog = createProgram(gl, VS, FS);
     this.uScene = gl.getUniformLocation(this.prog, "u_scene")!;
     this.uRes = gl.getUniformLocation(this.prog, "u_res")!;
@@ -274,28 +203,17 @@ class FlatVsToonSketch implements Sketch {
     this.uSeed = gl.getUniformLocation(this.prog, "u_seed")!;
     this.uHandleDot = gl.getUniformLocation(this.prog, "u_handleDot")!;
     this.vao = gl.createVertexArray()!;
-
-    this.fbo = gl.createFramebuffer()!;
-    this.sceneTex = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    this.shadowTex = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
-    gl.texImage2D(
-      gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
-      new Uint8Array([0, 0, 0, 0]),
-    );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.scene = new OffscreenTarget(gl);
+    this.noiseTex = buildNoiseTexture(gl);
+    gl.activeTexture(gl.TEXTURE0 + NOISE_TEX_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, this.noiseTex);
+    gl.activeTexture(gl.TEXTURE0);
+    bindNoiseUniform(gl, this.prog);
   }
 
-  setTheme() {}
+  setTheme(theme: FigureTheme) {
+    this.theme.setTarget(theme);
+  }
 
   resize(w: number, h: number, dpr: number) {
     this.w = w;
@@ -341,7 +259,7 @@ class FlatVsToonSketch implements Sketch {
     for (const L of this.lotuses) {
       this.diskBuf[i * 4 + 0] = L.x;
       this.diskBuf[i * 4 + 1] = L.y;
-      this.diskBuf[i * 4 + 2] = L.reach * LOTUS_RIPPLE_FRAC;
+      this.diskBuf[i * 4 + 2] = L.reach * FIGURE_FOAM_FRAC;
       this.diskBuf[i * 4 + 3] = 0;
       this.notchBuf[i] = 0;
       this.seedBuf[i] = L.seed;
@@ -358,24 +276,10 @@ class FlatVsToonSketch implements Sketch {
       this.seedBuf[i] = 0;
     }
 
-    // Offscreen FBO at drawing-buffer resolution so the scene capture has the
-    // same fidelity as the main canvas.
-    const fw = Math.max(1, Math.round(w * dpr));
-    const fh = Math.max(1, Math.round(h * dpr));
-    if (fw !== this.fboW || fh !== this.fboH) {
-      this.fboW = fw;
-      this.fboH = fh;
-      const gl = this.gl;
-      gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
-      gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA8, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null,
-      );
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-      gl.framebufferTexture2D(
-        gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.sceneTex, 0,
-      );
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
+    this.scene.resize(
+      Math.max(1, Math.round(w * dpr)),
+      Math.max(1, Math.round(h * dpr)),
+    );
   }
 
   pointer(p: PointerInfo) {
@@ -394,12 +298,30 @@ class FlatVsToonSketch implements Sketch {
     const { gl, w, h } = this;
     if (w === 0 || h === 0) return;
 
+    // Ease the pond palette toward the active theme (~250ms) so a toggle
+    // fades the water/lily/lotus in lockstep with the CSS frost transition,
+    // exactly like the production pond.
+    const dt = this.lastT == null ? 0 : Math.min(0.1, t - this.lastT);
+    this.lastT = t;
+    if (this.theme.advance(dt)) {
+      this.lily.setTheme(this.theme.mix);
+      this.lotus.setTheme(this.theme.mix);
+    }
+    const bg = lerpRgb(BG_DARK, BG_LIGHT, this.theme.mix);
+    const deep = lerpRgb(DEEP_DARK, DEEP_LIGHT, this.theme.mix);
+
     // Refresh petal angles in place (flutter only — base placement is
-    // constant). Each bloom's petals are written sequentially into the shared
-    // instance buffer; one instanced draw renders all of them.
+    // constant). Each bloom's petals come out of buildSingleLotusInstances
+    // and are concatenated into the shared instance buffer; one instanced
+    // draw renders all of them.
     let o = 0;
     for (const L of this.lotuses) {
-      o = writeLotusPetals(this.lotusInst, o, L.x, L.y, L.size, L.baseAngle, t);
+      const { count } = buildSingleLotusInstances(
+        this.lotusBloomScratch, L.x, L.y, L.size, t,
+        { rings: LOTUS_RING_COUNT, baseAngle: L.baseAngle },
+      );
+      this.lotusInst.set(this.lotusBloomScratch.subarray(0, count * LOTUS_INST_FLOATS), o);
+      o += count * LOTUS_INST_FLOATS;
     }
     this.lotusInstCount = o / LOTUS_INST_FLOATS;
 
@@ -410,15 +332,12 @@ class FlatVsToonSketch implements Sketch {
 
     // 1) Render scene (lilies + lotuses on transparent bg) into the offscreen
     // FBO. The LilypadRenderer / LotusRenderer manage their own blend state.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-    gl.viewport(0, 0, this.fboW, this.fboH);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fbo);
+    gl.viewport(0, 0, this.scene.width, this.scene.height);
     gl.disable(gl.DEPTH_TEST);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    this.lily.draw(
-      this.lilyInst, this.lilies.length, w, h, 0,
-      this.shadowTex, this.fboW, this.fboH,
-    );
+    this.lily.draw(this.lilyInst, this.lilies.length, w, h, 0);
     this.lotus.draw(this.lotusInst, this.lotusInstCount, w, h, 0);
 
     // 2) Composite back into the framework's viewport on the default fb.
@@ -431,15 +350,15 @@ class FlatVsToonSketch implements Sketch {
     gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
+    gl.bindTexture(gl.TEXTURE_2D, this.scene.tex);
     gl.uniform1i(this.uScene, 0);
     gl.uniform2f(this.uRes, w, h);
     gl.uniform1f(this.uTime, this.time);
     gl.uniform1f(this.uWiper, this.wiper);
-    // Pond palette — same constants the production water shader reads. BG_DARK
-    // is RGBA; the water shader only needs RGB.
-    gl.uniform3f(this.uBg, BG_DARK[0], BG_DARK[1], BG_DARK[2]);
-    gl.uniform3f(this.uDeep, DEEP_DARK[0], DEEP_DARK[1], DEEP_DARK[2]);
+    // Pond palette — eased between dark/light per current theme so the
+    // figure matches the production water shader frame-for-frame.
+    gl.uniform3f(this.uBg, bg[0], bg[1], bg[2]);
+    gl.uniform3f(this.uDeep, deep[0], deep[1], deep[2]);
     gl.uniform1f(this.uSheen, SHEEN);
     gl.uniform1f(this.uRippleCrest, RIPPLE_CREST);
     gl.uniform1i(this.uDiskCount, this.lilies.length + this.lotuses.length);
@@ -459,18 +378,17 @@ class FlatVsToonSketch implements Sketch {
     this.lotus.dispose();
     gl.deleteProgram(this.prog);
     gl.deleteVertexArray(this.vao);
-    gl.deleteFramebuffer(this.fbo);
-    gl.deleteTexture(this.sceneTex);
-    gl.deleteTexture(this.shadowTex);
+    this.scene.dispose();
+    gl.deleteTexture(this.noiseTex);
   }
 }
 
 const mod: FigureModule = {
   kind: "webgl2",
   aspect: 2.4,
-  create(host) {
+  create(host, theme) {
     if (host.kind !== "webgl2") throw new Error("expected webgl2 host");
-    return new FlatVsToonSketch(host.gl);
+    return new FlatVsToonSketch(host.gl, theme);
   },
 };
 

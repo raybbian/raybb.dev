@@ -8,6 +8,7 @@ import {
   straightSpineJoints,
 } from "./fishMesh";
 import { PALETTE as P } from "@/figures/palette";
+import { drawVerticalDivider } from "@/figures/canvas2d";
 
 type Pt = { x: number; y: number };
 
@@ -133,12 +134,7 @@ class CatmullSketch implements Sketch {
     ctx.fillStyle = P.bg;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = P.divider;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(w / 2, 16);
-    ctx.lineTo(w / 2, h - 16);
-    ctx.stroke();
+    drawVerticalDivider(ctx, w / 2, h, P.divider);
 
     // ---- Left: open spline through draggable points ----
     const lr = this.leftRect();

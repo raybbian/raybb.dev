@@ -2,6 +2,7 @@ import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
 import { FISH_HALF_W, fishBodyRing, fitInto } from "./fishMesh";
 import { triangulateSteps, type EarClipStep } from "@/lib/triangulate";
 import { PALETTE as P } from "@/figures/palette";
+import { SliderUI } from "@/figures/SliderUI";
 
 // Step-by-step ear clipping over a low-res fish polygon. The raw control
 // ring is used directly (no Catmull-Rom smoothing) so each ear is visibly
@@ -9,10 +10,6 @@ import { PALETTE as P } from "@/figures/palette";
 // slider lives inside the canvas — it's drawn during frame() and dragged
 // through the same pointer events the host already forwards.
 
-const SLIDER_BAND = 44; // height of the bottom strip reserved for the slider
-const SLIDER_PAD_X = 28;
-const KNOB_R = 8;
-const HIT_PAD = 10; // extra vertical hit area around the track
 const FILL = "rgba(45,212,191,0.16)";
 const FILL_LATEST = "rgba(45,212,191,0.42)";
 
@@ -36,11 +33,11 @@ class EarClipSketch implements Sketch {
   private h = 0;
   private poly: { x: number; y: number }[] = [];
   private steps: EarClipStep[] = [];
-  private step = 0;
-  private dragging = false;
+  private slider: SliderUI;
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
+    this.slider = new SliderUI({ steps: 0, initial: 0 });
   }
 
   setTheme() {}
@@ -50,35 +47,15 @@ class EarClipSketch implements Sketch {
     this.h = h;
     if (w === 0 || h === 0) return;
     // Polygon owns the area above the slider band; raw ring → ~24 verts.
-    const polyH = Math.max(1, h - SLIDER_BAND);
+    const polyH = Math.max(1, h - this.slider.reservedBand);
     this.poly = fitInto(rotated(fishBodyRing(), ANCHOR_OFFSET), w, polyH, 0.18);
     this.steps = triangulateSteps(this.poly);
-    if (this.step > this.steps.length) this.step = this.steps.length;
-  }
-
-  private trackGeom() {
-    const y = this.h - SLIDER_BAND / 2;
-    const x0 = SLIDER_PAD_X;
-    const x1 = this.w - SLIDER_PAD_X;
-    return { y, x0, x1, w: Math.max(1, x1 - x0), n: this.steps.length };
-  }
-
-  private knobX() {
-    const { x0, w, n } = this.trackGeom();
-    return n === 0 ? x0 : x0 + (this.step / n) * w;
+    this.slider.setSteps(this.steps.length);
+    this.slider.layout(w, h);
   }
 
   pointer(p: PointerInfo) {
-    const { y, x0, x1, w, n } = this.trackGeom();
-    if (p.type === "down" && Math.abs(p.y - y) < SLIDER_BAND / 2 + HIT_PAD) {
-      this.dragging = true;
-    } else if (p.type === "up") {
-      this.dragging = false;
-    }
-    if (this.dragging && p.down && n > 0) {
-      const cx = Math.min(x1, Math.max(x0, p.x));
-      this.step = Math.round(((cx - x0) / w) * n);
-    }
+    this.slider.pointer(p);
   }
 
   private drawTri(a: number, b: number, c: number, fill: string, stroke: string, width: number) {
@@ -98,43 +75,6 @@ class EarClipSketch implements Sketch {
     ctx.stroke();
   }
 
-  private drawSlider() {
-    const ctx = this.ctx;
-    const { y, x0, x1, w, n } = this.trackGeom();
-
-    ctx.strokeStyle = P.divider;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x0, y);
-    ctx.lineTo(x1, y);
-    ctx.stroke();
-
-    if (n > 0) {
-      ctx.fillStyle = P.structural;
-      for (let i = 0; i <= n; i++) {
-        const tx = x0 + (i / n) * w;
-        ctx.beginPath();
-        ctx.arc(tx, y, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    const kx = this.knobX();
-    ctx.fillStyle = P.accent;
-    ctx.beginPath();
-    ctx.arc(kx, y, KNOB_R, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = P.hint;
-    ctx.font = P.font;
-    ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "left";
-    ctx.fillText(`ear ${this.step} / ${n}`, x0, y - 14);
-    ctx.textAlign = "right";
-    ctx.fillText("drag to clip ears", x1, y - 14);
-    ctx.textAlign = "left";
-  }
-
   frame() {
     const ctx = this.ctx;
     const { w, h } = this;
@@ -143,7 +83,8 @@ class EarClipSketch implements Sketch {
     ctx.fillStyle = P.bg;
     ctx.fillRect(0, 0, w, h);
 
-    const { steps, step } = this;
+    const { steps } = this;
+    const step = this.slider.value as number;
 
     // Clipped ears so far. Older ones fade to a structural outline; the
     // latest one keeps the accent so the eye lands on what just came off.
@@ -196,7 +137,10 @@ class EarClipSketch implements Sketch {
       ctx.fill();
     }
 
-    this.drawSlider();
+    this.slider.draw2D(ctx, {
+      leftLabel: `ear ${step} / ${steps.length}`,
+      rightLabel: "drag to clip ears",
+    });
   }
 
   dispose() {}

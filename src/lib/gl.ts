@@ -26,6 +26,8 @@ export function unitCircleMesh(segments: number): Float32Array {
 }
 
 // `attribs` is [name, size] in buffer order; returns floats/instance.
+// Attributes the program doesn't declare (loc == -1) are skipped but still
+// consume their stride slot, so one VBO layout can feed multiple programs.
 export function bindInstancedFloatAttribs(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
@@ -36,9 +38,11 @@ export function bindInstancedFloatAttribs(
   let offset = 0;
   for (const [name, size] of attribs) {
     const loc = gl.getAttribLocation(program, name);
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
-    gl.vertexAttribDivisor(loc, 1);
+    if (loc >= 0) {
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
+      gl.vertexAttribDivisor(loc, 1);
+    }
     offset += size * 4;
   }
   return floats;
@@ -63,4 +67,51 @@ export function createProgram(
     throw new Error(`Program link failed: ${log}`);
   }
   return prog;
+}
+
+// RGBA8 LINEAR/CLAMP offscreen render target. Sketches that capture a scene
+// to texture (flatVsToon, waterRefract) reach for this instead of duplicating
+// the framebuffer + texture + texImage2D dance.
+export class OffscreenTarget {
+  readonly fbo: WebGLFramebuffer;
+  readonly tex: WebGLTexture;
+  width = 0;
+  height = 0;
+  private gl: WebGL2RenderingContext;
+
+  constructor(gl: WebGL2RenderingContext) {
+    this.gl = gl;
+    this.fbo = gl.createFramebuffer()!;
+    this.tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  // Allocates / reallocates the backing storage. Returns true when the size
+  // actually changed so callers can skip re-binding when it didn't.
+  resize(w: number, h: number): boolean {
+    if (w === this.width && h === this.height) return false;
+    const gl = this.gl;
+    this.width = w;
+    this.height = h;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return true;
+  }
+
+  dispose(): void {
+    const gl = this.gl;
+    gl.deleteFramebuffer(this.fbo);
+    gl.deleteTexture(this.tex);
+  }
 }

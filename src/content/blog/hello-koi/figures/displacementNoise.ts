@@ -1,6 +1,6 @@
-import { createProgram } from "@/lib/gl";
 import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
-import VS from "@/render/shaders/water.vert.glsl";
+import { FullscreenShader } from "@/figures/FullscreenShader";
+import { PanTracker } from "@/figures/PanTracker";
 import FS from "./shaders/displacementNoise.frag.glsl";
 
 const NOISE_PER_CSS_PX = 1 / 60;
@@ -9,27 +9,23 @@ class DisplacementNoiseSketch implements Sketch {
   animated = true;
 
   private gl: WebGL2RenderingContext;
-  private prog: WebGLProgram;
-  private uUvScale: WebGLUniformLocation;
-  private uPan: WebGLUniformLocation;
-  private uTime: WebGLUniformLocation;
-  private vao: WebGLVertexArrayObject;
+  private shader: FullscreenShader;
+  private uUvScale: WebGLUniformLocation | null;
+  private uPan: WebGLUniformLocation | null;
+  private uTime: WebGLUniformLocation | null;
+  private pan: PanTracker;
 
   private w = 0;
   private h = 0;
-  private panX = 0;
-  private panY = 0;
-  private lastPx = 0;
-  private lastPy = 0;
   private time = 0;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
-    this.prog = createProgram(gl, VS, FS);
-    this.uUvScale = gl.getUniformLocation(this.prog, "u_uvScale")!;
-    this.uPan = gl.getUniformLocation(this.prog, "u_pan")!;
-    this.uTime = gl.getUniformLocation(this.prog, "u_time")!;
-    this.vao = gl.createVertexArray()!;
+    this.shader = new FullscreenShader(gl, FS);
+    this.uUvScale = this.shader.uniform("u_uvScale");
+    this.uPan = this.shader.uniform("u_pan");
+    this.uTime = this.shader.uniform("u_time");
+    this.pan = new PanTracker(NOISE_PER_CSS_PX);
   }
 
   setTheme() {}
@@ -40,36 +36,25 @@ class DisplacementNoiseSketch implements Sketch {
   }
 
   pointer(p: PointerInfo) {
-    if (p.type === "down") {
-      this.lastPx = p.x;
-      this.lastPy = p.y;
-    } else if (p.type === "move" && p.down) {
-      this.panX -= (p.x - this.lastPx) * NOISE_PER_CSS_PX;
-      this.panY -= (p.y - this.lastPy) * NOISE_PER_CSS_PX;
-      this.lastPx = p.x;
-      this.lastPy = p.y;
-    }
+    this.pan.pointer(p);
   }
 
   frame(t: number) {
     this.time = t;
-    const { gl, w, h, panX, panY } = this;
+    const { gl, w, h } = this;
     if (w === 0 || h === 0) return;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.prog);
-    gl.bindVertexArray(this.vao);
-    gl.uniform2f(this.uUvScale, w * NOISE_PER_CSS_PX, h * NOISE_PER_CSS_PX);
-    gl.uniform2f(this.uPan, panX, panY);
-    gl.uniform1f(this.uTime, this.time);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.bindVertexArray(null);
+    this.shader.draw(() => {
+      if (this.uUvScale)
+        gl.uniform2f(this.uUvScale, w * NOISE_PER_CSS_PX, h * NOISE_PER_CSS_PX);
+      if (this.uPan) gl.uniform2f(this.uPan, this.pan.panX, this.pan.panY);
+      if (this.uTime) gl.uniform1f(this.uTime, this.time);
+    });
   }
 
   dispose() {
-    const gl = this.gl;
-    gl.deleteProgram(this.prog);
-    gl.deleteVertexArray(this.vao);
+    this.shader.dispose();
   }
 }
 

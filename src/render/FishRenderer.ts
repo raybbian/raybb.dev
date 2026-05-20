@@ -24,6 +24,7 @@ import fullscreenVert from "@/render/shaders/water.vert.glsl";
 import patternFrag from "@/render/shaders/pattern.frag.glsl";
 import heightFrag from "@/render/shaders/height.frag.glsl";
 import { PatternBakeProgram } from "@/render/patternBaker";
+import { bindNoiseUniform } from "@/render/noiseTexture";
 
 const MAX_VERTS = 8192;
 const MAX_INDICES = 24576;
@@ -215,6 +216,11 @@ export class FishRenderer {
     if (this.features.shadow) {
       this.solidShadow = shadowLocs(gl, this.solidProg);
       this.ellipseShadow = shadowLocs(gl, this.ellipseProg);
+      // u_noise (shared tileable noise) is bound on a reserved unit; the
+      // shadow.glsl include's wavy-displacement path samples it instead of
+      // running per-pixel FBM.
+      bindNoiseUniform(gl, this.solidProg);
+      bindNoiseUniform(gl, this.ellipseProg);
     }
 
     if (this.features.cast) {

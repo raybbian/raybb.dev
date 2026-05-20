@@ -16,6 +16,7 @@ import { Ripples } from "@/sim/Ripples";
 import { mag, sub, mulberry32, type Vec2 } from "@/lib/math";
 import { pickKoiColors } from "@/sim/koiPattern";
 import { instrumentGl } from "@/lib/glPerf";
+import { buildNoiseTexture, NOISE_TEX_UNIT } from "@/render/noiseTexture";
 
 const FISH_COUNT = 6;
 const FISH_SCALE_MEAN = 0.475; // 5% smaller than the original school
@@ -93,6 +94,15 @@ export default function FishBackground() {
       return;
     }
     const glPerf = instrumentGl(gl);
+
+    // Tileable noise texture bound once on a reserved unit; every shader
+    // that includes shadow.glsl (or water.frag) samples it via u_noise.
+    // Replaces the per-pixel FBM previously evaluated in shadow.glsl, the
+    // refract pass and the water ripple loop.
+    const noiseTex = buildNoiseTexture(gl);
+    gl.activeTexture(gl.TEXTURE0 + NOISE_TEX_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, noiseTex);
+    gl.activeTexture(gl.TEXTURE0);
 
     // Source of truth for the viewport is the canvas's own CSS box. The
     // `pond-canvas` utility pins that to the *large* viewport (100lvh/100vw),
@@ -381,12 +391,26 @@ export default function FishBackground() {
         const cpu = cpuAccum / fpsFrames;
         const gpu = glPerf.gpuMs >= 0 ? `${glPerf.gpuMs.toFixed(1)} ms` : "n/a";
         const { calls, verts, tris } = glPerf.stats;
+        // Per-pass GPU times, sorted desc so the biggest target is on top.
+        // Two columns to keep the overlay compact.
+        const rows = [...glPerf.passes.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(
+            ([name, t]) =>
+              `${name.padEnd(6)} ${t.toFixed(2).padStart(5)} ms`,
+          );
+        let passLines = "";
+        for (let i = 0; i < rows.length; i += 2) {
+          passLines +=
+            (rows[i + 1] ? `${rows[i]}   ${rows[i + 1]}` : rows[i]) + "\n";
+        }
         fpsEl.textContent =
           `${fps.toFixed(0)} fps  ${ms.toFixed(1)} ms\n` +
           `cpu ${cpu.toFixed(1)} ms  gpu ${gpu}\n` +
           `${calls} draws  ${(verts / 1000).toFixed(1)}k v  ${(tris / 1000).toFixed(1)}k tri\n` +
           `${canvas.width}×${canvas.height} @${(canvas.width / width).toFixed(1)}x\n` +
           `rs ${renderScale.toFixed(2)} → ${fbW}×${fbH}\n` +
+          passLines +
           glPerf.gpuInfo;
         fpsFrames = 0;
         cpuAccum = 0;
@@ -457,6 +481,7 @@ export default function FishBackground() {
       // so order strictly bottom-to-top (deepest fish .. lotuses): the topmost
       // caster over a texel overwrites, so its MSAA edge composites cleanly
       // with no overlap outline.
+      glPerf.pass("shadow");
       shadow.begin();
       for (const { fish, geo } of ordered) {
         renderer.cast(geo, width, height, fishHeight(fish.depth), worldY);
@@ -475,6 +500,7 @@ export default function FishBackground() {
       renderer.prepareShadow(shadow.tex, fbW, fbH);
       // Lilypads are NOT captured here — they float on the surface and draw
       // on top of the water pass, so no ripple/refraction touches them.
+      glPerf.pass("fish");
       water.beginScene();
       for (const { fish, geo, palette } of ordered) {
         renderer.draw(
@@ -490,6 +516,7 @@ export default function FishBackground() {
 
       // Treats sink, so render into the scene MRT before the water pass —
       // depth tint + refraction wash over them as they descend.
+      glPerf.pass("treats");
       const tInst = treats.renderInstances();
       treatRenderer.draw(tInst.data, tInst.count, width, height, worldY);
 
@@ -521,10 +548,13 @@ export default function FishBackground() {
       }
       ripples.emitRipples(water, worldY);
       treats.emitRipples(water, worldY);
+      glPerf.pass("water");
       water.composite(width, height, now / 1000, shadow.tex, screenScale);
       // Upscale the scaled composite to the full-res default framebuffer;
       // lilypads/lotuses then draw crisp on top at native resolution.
+      glPerf.pass("present");
       water.present(canvas.width, canvas.height);
+      glPerf.pass("lilies");
       lpRenderer.draw(
         inst.data,
         inst.count,
@@ -535,6 +565,7 @@ export default function FishBackground() {
         canvas.width,
         canvas.height,
       );
+      glPerf.pass("lotus");
       lotusRenderer.draw(
         lotusInst.data,
         lotusInst.count,
@@ -565,6 +596,7 @@ export default function FishBackground() {
       treatRenderer.dispose();
       water.dispose();
       shadow.dispose();
+      gl.deleteTexture(noiseTex);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, []);

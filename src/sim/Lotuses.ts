@@ -184,6 +184,78 @@ interface Band {
   lastSeen: number; // frame counter; off-window bands are evicted
 }
 
+// Figure-side helpers: lay out a single bloom without a per-band rng. Used by
+// blog figures (flatVsToon, etc.) that need a deterministic petal arrangement
+// matching the production placeBandLotuses geometry — mid-range len/half, no
+// hue/sway/bob/flutter jitter (no rng).
+
+export function lotusPetalCount(rings: number): number {
+  let n = 0;
+  for (let j = rings - 1; j >= 0; j--) {
+    const fr = rings === 1 ? 0 : j / (rings - 1);
+    n += Math.round(PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr);
+  }
+  return n;
+}
+
+export function lotusReach(size: number, rings: number): number {
+  const maxInner = INNER_START + RING_STEP * (rings - 1);
+  return size * (maxInner + LEN_FRAC[1]);
+}
+
+export function buildSingleLotusInstances(
+  out: Float32Array,
+  x: number,
+  y: number,
+  size: number,
+  _t: number,
+  opts: { rings: number; baseAngle: number },
+): { count: number } {
+  const { rings, baseAngle } = opts;
+  const lenMid = (LEN_FRAC[0] + LEN_FRAC[1]) * 0.5;
+  const halfMid = (HALF_FRAC[0] + HALF_FRAC[1]) * 0.5;
+  let o = 0;
+  let count = 0;
+  for (let j = rings - 1; j >= 0; j--) {
+    const fr = rings === 1 ? 0 : j / (rings - 1);
+    const inner = size * (INNER_START + RING_STEP * j);
+    const len = size * lenMid;
+    const half = size * halfMid;
+    const ringPetals = Math.round(
+      PETALS_INNER + (PETALS_OUTER - PETALS_INNER) * fr,
+    );
+    const sat = CENTER_SL[0] + (EDGE_SL[0] - CENTER_SL[0]) * fr;
+    const light = CENTER_SL[1] + (EDGE_SL[1] - CENTER_SL[1]) * fr;
+    const c = hslToRgb(PINK_HUE, sat, light);
+    const satD =
+      DARK_CENTER_SL[0] + (DARK_EDGE_SL[0] - DARK_CENTER_SL[0]) * fr;
+    const lightD =
+      DARK_CENTER_SL[1] + (DARK_EDGE_SL[1] - DARK_CENTER_SL[1]) * fr;
+    const cD = hslToRgb(BLUE_HUE, satD, lightD);
+    const ringOffset = baseAngle + (j % 2) * (Math.PI / ringPetals);
+    for (let k = 0; k < ringPetals; k++) {
+      const angle = ringOffset + (k / ringPetals) * TAU;
+      out[o++] = x;
+      out[o++] = y;
+      out[o++] = angle;
+      out[o++] = len;
+      out[o++] = half;
+      out[o++] = inner;
+      out[o++] = c[0];
+      out[o++] = c[1];
+      out[o++] = c[2];
+      out[o++] = cD[0];
+      out[o++] = cD[1];
+      out[o++] = cD[2];
+      // Deterministic per-petal noise seed (used by the shader for subtle
+      // per-petal variation). Stable across renders.
+      out[o++] = (j * 7 + k * 3) * 0.317;
+      count++;
+    }
+  }
+  return { count };
+}
+
 export class Lotuses {
   private bands = new Map<number, Band>();
   private t = 0;

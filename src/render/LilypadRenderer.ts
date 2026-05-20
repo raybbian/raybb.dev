@@ -18,6 +18,7 @@ import VS from "@/render/shaders/lilypad.vert.glsl";
 import FS from "@/render/shaders/lilypad.frag.glsl";
 import CAST_FS from "@/render/shaders/lilypad.shadow.frag.glsl";
 import WIRE_FS from "@/render/shaders/lilypad.wire.frag.glsl";
+import { bindNoiseUniform } from "@/render/noiseTexture";
 
 const CIRCLE_SEG = 64;
 
@@ -74,6 +75,10 @@ export class LilypadRenderer {
   };
   private themeMix = 1; // 0 = dark, 1 = light; eased by the caller
   private capacityFloats = 0; // instVbo size, grown on demand
+  // Lazily allocated 1×1 zero texture used when callers (figures) don't have
+  // a real shadow mask to pass in. RGBA = (0,0,0,0) makes shadowHit() return
+  // 0 everywhere, so the lily renders with no cast-shadow contribution.
+  private dummyShadow: WebGLTexture | null = null;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -104,6 +109,9 @@ export class LilypadRenderer {
       recv: u("u_recvHeight"),
       margin: u("u_shadowMargin"),
     };
+    // No-op if u_noise was optimized out (lilypad uses shadowHit, not the
+    // FBM wavy variants); kept for shadow.glsl include consistency.
+    bindNoiseUniform(gl, this.prog);
 
     const circle = unitCircleMesh(CIRCLE_SEG);
     this.circleCount = circle.length / 2;
@@ -195,24 +203,54 @@ export class LilypadRenderer {
     gl.bindVertexArray(null);
   }
 
+  private getDummyShadow(): WebGLTexture {
+    if (this.dummyShadow) return this.dummyShadow;
+    const gl = this.gl;
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 0]),
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.dummyShadow = tex;
+    return tex;
+  }
+
   // Visible pass; also receives shadows (lotuses cast onto the pads).
+  // `shadowTex`/`fragW`/`fragH` are optional: figures that don't run a
+  // shadow pass omit them and the renderer binds a 1×1 zero texture so
+  // shadowHit() returns 0 everywhere.
   draw(
     data: Float32Array,
     count: number,
     width: number,
     height: number,
     scroll: number,
-    shadowTex: WebGLTexture,
-    fragW: number,
-    fragH: number,
+    shadowTex?: WebGLTexture,
+    fragW?: number,
+    fragH?: number,
   ) {
     if (count === 0) return;
     const gl = this.gl;
+    const tex = shadowTex ?? this.getDummyShadow();
+    const fw = fragW ?? width;
+    const fh = fragH ?? height;
     this.upload(data, count);
     gl.useProgram(this.prog);
     gl.uniform2f(this.resLoc, width, height);
     gl.uniform1f(this.scrollLoc, scroll);
-    gl.uniform2f(this.sh.fragRes, fragW, fragH);
+    gl.uniform2f(this.sh.fragRes, fw, fh);
     const sd = shadowSunDir(this.themeMix);
     gl.uniform2f(this.sh.sunDir, sd[0], sd[1]);
     const [mx, my] = shadowMargin();
@@ -224,7 +262,7 @@ export class LilypadRenderer {
     gl.uniform1f(this.sh.recv, LILYPAD_H);
     gl.uniform2f(this.offsetLoc, 0, 0); // no cast offset on visible draws
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, shadowTex);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.uniform1i(this.sh.tex, 0);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -275,5 +313,6 @@ export class LilypadRenderer {
     gl.deleteBuffer(this.circleVbo);
     gl.deleteBuffer(this.instVbo);
     gl.deleteBuffer(this.wireIbo);
+    if (this.dummyShadow) gl.deleteTexture(this.dummyShadow);
   }
 }

@@ -6,11 +6,20 @@ import {
 import { TREAT_INST_FLOATS } from "@/sim/Treats";
 import VS from "@/render/shaders/treat.vert.glsl";
 import FS from "@/render/shaders/treat.frag.glsl";
+import FS_FLAT from "@/render/shaders/treatFlat.frag.glsl";
 
 const CIRCLE_SEG = 32;
 
+export interface TreatRendererConfig {
+  // false: single-color FS — sketch-friendly, no MRT depth attachment
+  // required. true (default): MRT output, writes submergence to the
+  // water pass's depth target.
+  depthOutput?: boolean;
+}
+
 // Must draw into the scene MRT before the water composite so the depth
 // attachment + water pass tint each treat bluer as it sinks (like fish bodies).
+// Pass `{ depthOutput: false }` to use a single-output shader for figures.
 export class TreatRenderer {
   private gl: WebGL2RenderingContext;
   private prog: WebGLProgram;
@@ -22,9 +31,10 @@ export class TreatRenderer {
   private scrollLoc: WebGLUniformLocation;
   private capacityFloats = 0;
 
-  constructor(gl: WebGL2RenderingContext) {
+  constructor(gl: WebGL2RenderingContext, cfg: TreatRendererConfig = {}) {
     this.gl = gl;
-    this.prog = createProgram(gl, VS, FS);
+    const frag = cfg.depthOutput === false ? FS_FLAT : FS;
+    this.prog = createProgram(gl, VS, frag);
     this.resLoc = gl.getUniformLocation(this.prog, "u_res")!;
     this.scrollLoc = gl.getUniformLocation(this.prog, "u_scroll")!;
 

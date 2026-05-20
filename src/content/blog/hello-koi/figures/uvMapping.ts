@@ -2,10 +2,13 @@ import type { Vec2 } from "@/lib/math";
 import type { FigureModule, Sketch } from "@/figures/types";
 import { PALETTE as P } from "@/figures/palette";
 import { Fish, type FishGeometry } from "@/sim/Fish";
-import { pickKoiColors, type KoiColors } from "@/sim/koiPattern";
-import { mulberry32 } from "@/lib/math";
+import { DEFAULT_KOI_COLORS } from "@/sim/koiPattern";
 import { FishRenderer } from "@/render/FishRenderer";
 import { PatternBakeProgram } from "@/render/patternBaker";
+import { figureScreenScale, FIGURE_FISH_SCALE } from "@/figures/scale";
+import { createFigureFish } from "@/figures/figureFish";
+import { shiftFishGeometryToHead, SmoothFollowCamera } from "@/figures/fishCamera";
+import { drawVerticalDivider } from "@/figures/canvas2d";
 import VS from "@/render/shaders/water.vert.glsl";
 import FS from "./shaders/koiPattern.frag.glsl";
 
@@ -18,7 +21,6 @@ import FS from "./shaders/koiPattern.frag.glsl";
 // quadrilateral outline on each side marks the patch of body the
 // highlighted UV rectangle currently covers.
 const WORLD_MULT = 3;
-const FIGURE_SCALE = 0.4;
 const FIGURE_SEED = 0x21bd5e3a;
 const FIGURE_NOISE_PHASE = 19.7;
 const FLOATS_PER_VERT = 8;
@@ -33,16 +35,6 @@ const PAT_U_CENTER = 0.5;
 const PAT_V_CENTER = 0.5;
 const PAT_U_RANGE = 1.4;
 const PAT_V_RANGE = 2.6;
-
-// Default koi palette pattern.frag.glsl uses on the production fish — same
-// values DEFAULT_KOI used to expose from the deleted CPU emulation.
-const DEFAULT_PALETTE: KoiColors = {
-  base: [0.98, 0.97, 0.94, 1],
-  mid: [0.93, 0.41, 0.18, 1],
-  accent: [0.08, 0.07, 0.09, 1],
-  fin: [0.08, 0.07, 0.09, 1],
-  seed: [13.7, 4.2],
-};
 
 function uvToPatternPx(
   u: number,
@@ -74,6 +66,7 @@ class UVMappingSketch implements Sketch {
   private worldH = 0;
   private fish: Fish | null = null;
   private lastT: number | null = null;
+  private camera = new SmoothFollowCamera();
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -91,7 +84,7 @@ class UVMappingSketch implements Sketch {
       features: { pattern: true, shadow: false, cast: false },
       enable: { dorsalShadow: false },
     });
-    this.renderer.setPalettes([DEFAULT_PALETTE]);
+    this.renderer.setPalettes([DEFAULT_KOI_COLORS]);
     this.patBaker = new PatternBakeProgram(gl, VS, FS);
     this.patUvCenter = this.patBaker.getUniformLocation("u_uvCenter");
     this.patUvRange = this.patBaker.getUniformLocation("u_uvRange");
@@ -109,21 +102,23 @@ class UVMappingSketch implements Sketch {
     const lw = w / 2;
     this.worldW = lw * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
-    const colors = pickKoiColors(mulberry32(FIGURE_SEED));
-    this.fish = new Fish(
-      { x: this.worldW / 2, y: this.worldH / 2 },
-      {
-        base: colors.base,
-        mid: colors.mid,
-        accent: colors.accent,
-        fin: colors.fin,
+    const screenScale = figureScreenScale(lw);
+    const scale = FIGURE_FISH_SCALE * screenScale;
+    this.fish = createFigureFish({
+      origin: { x: this.worldW / 2, y: this.worldH / 2 },
+      colors: {
+        base: DEFAULT_KOI_COLORS.base,
+        mid: DEFAULT_KOI_COLORS.mid,
+        accent: DEFAULT_KOI_COLORS.accent,
+        fin: DEFAULT_KOI_COLORS.fin,
       },
-      0.4,
-      FIGURE_SCALE,
-      { noisePhaseHeading: FIGURE_NOISE_PHASE, seed: FIGURE_SEED },
-      FIGURE_SCALE,
-    );
+      scale,
+      screenScale,
+      seed: FIGURE_SEED,
+      noisePhase: { heading: FIGURE_NOISE_PHASE },
+    });
     this.lastT = null;
+    this.camera.reset();
   }
 
   frame(t: number) {
@@ -138,27 +133,13 @@ class UVMappingSketch implements Sketch {
     const rx0 = w / 2;
 
     // Pull the live body geometry the renderer would consume in production.
-    // Camera = head: shift body verts so the head lands at the left-panel
-    // centre. Mutate in place — Fish rebuilds the pool next frame.
+    // Smoothed camera follow: head drifts off-centre on turns and the camera
+    // eases back, which reads more like watching than locked-to. Mutate in
+    // place — Fish rebuilds the pool next frame.
     const geo = fish.buildGeometry();
     const head = fish.spine.joints[0];
-    const dx = lw / 2 - head.x;
-    const dy = h / 2 - head.y;
-    const v = geo.verts;
-    for (let i = 0; i < geo.vCount; i += FLOATS_PER_VERT) {
-      v[i] += dx;
-      v[i + 1] += dy;
-    }
-    const fi = geo.finInstances;
-    for (let i = 0; i < geo.finCount; i += 9) {
-      fi[i] += dx;
-      fi[i + 1] += dy;
-    }
-    const ei = geo.eyeInstances;
-    for (let i = 0; i < geo.eyeCount; i += 9) {
-      ei[i] += dx;
-      ei[i + 1] += dy;
-    }
+    this.camera.follow(head.x, head.y, dt);
+    shiftFishGeometryToHead(geo, this.camera.x, this.camera.y, lw / 2, h / 2);
 
     // --- Hidden WebGL render: body in left viewport, pattern in right ---
     const gl = this.gl;
@@ -179,7 +160,7 @@ class UVMappingSketch implements Sketch {
 
     gl.viewport(vxLeftW, 0, vxRightW, ph);
     this.patBaker.use();
-    this.patBaker.setPalette(DEFAULT_PALETTE);
+    this.patBaker.setPalette(DEFAULT_KOI_COLORS);
     if (this.patUvCenter) gl.uniform2f(this.patUvCenter, PAT_U_CENTER, PAT_V_CENTER);
     if (this.patUvRange) gl.uniform2f(this.patUvRange, PAT_U_RANGE, PAT_V_RANGE);
     this.patBaker.bake();
@@ -199,7 +180,7 @@ class UVMappingSketch implements Sketch {
     if (corners) this.drawBodyHighlight(geo, corners, lw, h);
     this.drawPatternRect(rx0, rw, h);
     if (corners) this.drawCornerLines(geo, corners, rx0, rw, h);
-    this.drawDivider(h);
+    drawVerticalDivider(ctx, w / 2, h, P.divider);
     this.drawLabels(rx0, h);
   }
 
@@ -340,18 +321,6 @@ class UVMappingSketch implements Sketch {
       ctx.lineTo(pp.x, pp.y);
       ctx.stroke();
     }
-    ctx.restore();
-  }
-
-  private drawDivider(h: number) {
-    const { ctx, w } = this;
-    ctx.save();
-    ctx.strokeStyle = P.divider;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(w / 2, 16);
-    ctx.lineTo(w / 2, h - 16);
-    ctx.stroke();
     ctx.restore();
   }
 

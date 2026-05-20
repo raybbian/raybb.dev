@@ -12,7 +12,7 @@ export const projects: Project[] = [
   {
     name: "Lightborne",
     description:
-      "A pixel puzzle platformer built with Rust, Bevy, and LDTK. Play as Lyra, a young goddess retrieving the shattered pieces of the Divine Prism by shooting and bouncing light beams to navigate rooms.",
+      "A pixel puzzle platformer built with Rust, Bevy, and LDTK. Play as Lyra, a young goddess retrieving the shattered pieces of the Divine Prism by shooting and bouncing light beams to navigate rooms. Co-led with my now-partner, Vivian Gu!",
     tech: ["Rust", "Bevy", "WGSL", "wgpu"],
     link: "https://raybbian.github.io/Lightborne",
     github: "https://github.com/raybbian/Lightborne",

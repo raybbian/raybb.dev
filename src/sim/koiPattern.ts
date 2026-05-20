@@ -40,6 +40,20 @@ const GOLDEN_FAMILY: [number, number, number, number, number, number] = [
 const FIN_DARKEN = 0.82; // fin tone = base * this
 const SEED_SCALE = 1000; // shader noise-field offset spread
 
+// Canonical porcelain / persimmon / sumi palette used by the blog figures
+// that don't need a randomized koi (koiPattern, koiSteps, uvMapping). Fin
+// is derived from base via FIN_DARKEN — same rule pickKoiColors applies to
+// every randomized koi — so figures that draw the full fish (uvMapping)
+// show a production-matching darker cream instead of pure sumi.
+const DEFAULT_BASE: Rgba = [0.98, 0.97, 0.94, 1];
+export const DEFAULT_KOI_COLORS: KoiColors = {
+  base: DEFAULT_BASE,
+  mid: [0.93, 0.41, 0.18, 1],
+  accent: [0.08, 0.07, 0.09, 1],
+  fin: darken(DEFAULT_BASE, FIN_DARKEN),
+  seed: [13.7, 4.2],
+};
+
 function pick(
   rng: () => number,
   fams: [number, number, number, number, number, number][],

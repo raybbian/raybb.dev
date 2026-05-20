@@ -1,6 +1,6 @@
-import { createProgram } from "@/lib/gl";
 import type { FigureModule, Sketch } from "@/figures/types";
-import VS from "@/render/shaders/water.vert.glsl";
+import { FullscreenShader } from "@/figures/FullscreenShader";
+import { DEFAULT_KOI_COLORS } from "@/sim/koiPattern";
 import FS from "./shaders/koiSteps.frag.glsl";
 
 // 1×N strip of square cells, flush together, showing the stages that turn
@@ -16,30 +16,39 @@ import FS from "./shaders/koiSteps.frag.glsl";
 // The shader at ./shaders/koiSteps.frag.glsl branches on cell index
 // derived from v_uv.x; this sketch just hands it the koi palette.
 
-const DEFAULT_BASE: [number, number, number] = [0.98, 0.97, 0.94];
-const DEFAULT_MID: [number, number, number] = [0.93, 0.41, 0.18];
-const DEFAULT_ACCENT: [number, number, number] = [0.08, 0.07, 0.09];
-const DEFAULT_SEED: [number, number] = [13.7, 4.2];
+const BASE: [number, number, number] = [
+  DEFAULT_KOI_COLORS.base[0],
+  DEFAULT_KOI_COLORS.base[1],
+  DEFAULT_KOI_COLORS.base[2],
+];
+const MID: [number, number, number] = [
+  DEFAULT_KOI_COLORS.mid[0],
+  DEFAULT_KOI_COLORS.mid[1],
+  DEFAULT_KOI_COLORS.mid[2],
+];
+const ACCENT: [number, number, number] = [
+  DEFAULT_KOI_COLORS.accent[0],
+  DEFAULT_KOI_COLORS.accent[1],
+  DEFAULT_KOI_COLORS.accent[2],
+];
 
 class KoiStepsSketch implements Sketch {
   animated = false;
 
   private gl: WebGL2RenderingContext;
-  private prog: WebGLProgram;
-  private uBase: WebGLUniformLocation;
-  private uMid: WebGLUniformLocation;
-  private uAccent: WebGLUniformLocation;
-  private uSeed: WebGLUniformLocation;
-  private vao: WebGLVertexArrayObject;
+  private shader: FullscreenShader;
+  private uBase: WebGLUniformLocation | null;
+  private uMid: WebGLUniformLocation | null;
+  private uAccent: WebGLUniformLocation | null;
+  private uSeed: WebGLUniformLocation | null;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
-    this.prog = createProgram(gl, VS, FS);
-    this.uBase = gl.getUniformLocation(this.prog, "u_base")!;
-    this.uMid = gl.getUniformLocation(this.prog, "u_mid")!;
-    this.uAccent = gl.getUniformLocation(this.prog, "u_accent")!;
-    this.uSeed = gl.getUniformLocation(this.prog, "u_seed")!;
-    this.vao = gl.createVertexArray()!;
+    this.shader = new FullscreenShader(gl, FS);
+    this.uBase = this.shader.uniform("u_base");
+    this.uMid = this.shader.uniform("u_mid");
+    this.uAccent = this.shader.uniform("u_accent");
+    this.uSeed = this.shader.uniform("u_seed");
   }
 
   setTheme() {}
@@ -49,20 +58,16 @@ class KoiStepsSketch implements Sketch {
     const { gl } = this;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.prog);
-    gl.bindVertexArray(this.vao);
-    gl.uniform3fv(this.uBase, DEFAULT_BASE);
-    gl.uniform3fv(this.uMid, DEFAULT_MID);
-    gl.uniform3fv(this.uAccent, DEFAULT_ACCENT);
-    gl.uniform2fv(this.uSeed, DEFAULT_SEED);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.bindVertexArray(null);
+    this.shader.draw(() => {
+      if (this.uBase) gl.uniform3fv(this.uBase, BASE);
+      if (this.uMid) gl.uniform3fv(this.uMid, MID);
+      if (this.uAccent) gl.uniform3fv(this.uAccent, ACCENT);
+      if (this.uSeed) gl.uniform2fv(this.uSeed, DEFAULT_KOI_COLORS.seed);
+    });
   }
 
   dispose() {
-    const gl = this.gl;
-    gl.deleteProgram(this.prog);
-    gl.deleteVertexArray(this.vao);
+    this.shader.dispose();
   }
 }
 

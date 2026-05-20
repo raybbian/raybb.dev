@@ -227,6 +227,17 @@ export class Fish {
   private curScale: number; // grows toward maxScale as the fish is fed
   private maxScale: number; // growth cap (the un-reduced rng max)
   private satedTimer = 0; // sec left ignoring treats after a recent meal
+  // Latest per-component contributions to the desired heading, set in
+  // resolve(). Read-only via `debug` so the behavior figure can visualize
+  // them. Each is the weighted vector that gets summed into (dx, dy).
+  private _vWanderX = 0;
+  private _vWanderY = 0;
+  private _vContainX = 0;
+  private _vContainY = 0;
+  private _vAvoidX = 0;
+  private _vAvoidY = 0;
+  private _vSeekX = 0;
+  private _vSeekY = 0;
   private mouthOpen = 0; // [0,1] the snout geometry reads; pulses or held open
   private gulpT = -1; // sec into the current gulp pulse; <0 = mouth shut
   private nextGulpIn = 0; // sec until the next gulp starts (when shut)
@@ -366,12 +377,20 @@ export class Fish {
     seekRadius: number;
     satedRemaining: number;
     satedDuration: number;
+    wander: Vec2;
+    contain: Vec2;
+    avoid: Vec2;
+    seek: Vec2;
   } {
     return {
       avoidRadius: this.avoidRadius,
       seekRadius: this.seekRadius,
       satedRemaining: Math.max(0, this.satedTimer),
       satedDuration: SATED_DUR,
+      wander: { x: this._vWanderX, y: this._vWanderY },
+      contain: { x: this._vContainX, y: this._vContainY },
+      avoid: { x: this._vAvoidX, y: this._vAvoidY },
+      seek: { x: this._vSeekX, y: this._vSeekY },
     };
   }
 
@@ -397,8 +416,12 @@ export class Fish {
     // sustained per-frame offset = constant turn rate = endless circling.
     const n = noise1(this.t * HEADING_NOISE_FREQ + this.noisePhaseHeading);
     const wander = fromAngle(n * TWO_PI);
-    let dx = wander.x * WANDER_WEIGHT;
-    let dy = wander.y * WANDER_WEIGHT;
+    const wx = wander.x * WANDER_WEIGHT;
+    const wy = wander.y * WANDER_WEIGHT;
+    this._vWanderX = wx;
+    this._vWanderY = wy;
+    let dx = wx;
+    let dy = wy;
 
     // Each edge pushes inward, quadratically harder the closer (full strength
     // once past it). Summing edges veers a cornered fish diagonally away.
@@ -409,23 +432,33 @@ export class Fish {
     };
     // The vertical edges track the visible window [worldY, worldY+height], so
     // as the camera scrolls the fish migrate to stay on screen.
-    dx += edgePush(head.x); // left edge   -> push right
-    dx -= edgePush(width - head.x); // right edge  -> push left
-    dy += edgePush(head.y - worldY); // top edge    -> push down
-    dy -= edgePush(worldY + height - head.y); // bottom edge -> push up
+    const cx =
+      edgePush(head.x) - edgePush(width - head.x);
+    const cy =
+      edgePush(head.y - worldY) - edgePush(worldY + height - head.y);
+    this._vContainX = cx;
+    this._vContainY = cy;
+    dx += cx;
+    dy += cy;
 
     // `prox` in [0,1] = pointer closeness; also drives speed-up/turn below.
     let prox = 0;
+    let avx = 0;
+    let avy = 0;
     if (mouse) {
       const away = sub(head, mouse);
       const ad = mag(away);
       if (ad < this.avoidRadius && ad > 1e-3) {
         prox = 1 - ad / this.avoidRadius;
         const k = prox * AVOID_STRENGTH;
-        dx += (away.x / ad) * k;
-        dy += (away.y / ad) * k;
+        avx = (away.x / ad) * k;
+        avy = (away.y / ad) * k;
+        dx += avx;
+        dy += avy;
       }
     }
+    this._vAvoidX = avx;
+    this._vAvoidY = avy;
 
     // `seek` in [0,1] = nearest-treat closeness; also drives speed-up/turn.
     let seek = 0;
@@ -439,13 +472,19 @@ export class Fish {
           nearest = t;
         }
       }
+    let sx = 0;
+    let sy = 0;
     if (nearest) {
       seek = 1 - nearestD / this.seekRadius;
       const to = sub(nearest, snout);
       const tl = mag(to) || 1;
-      dx += (to.x / tl) * SEEK_WEIGHT;
-      dy += (to.y / tl) * SEEK_WEIGHT;
+      sx = (to.x / tl) * SEEK_WEIGHT;
+      sy = (to.y / tl) * SEEK_WEIGHT;
+      dx += sx;
+      dy += sy;
     }
+    this._vSeekX = sx;
+    this._vSeekY = sy;
 
     const desired = heading({ x: dx, y: dy });
     const newHeading = constrainAngle(

@@ -68,7 +68,10 @@ export default function BlogToc({ entries }: { entries: TocEntry[] }) {
   // Content-derived key for effect deps: `entries` identity flips every
   // TocProvider render even when the headings haven't actually changed.
   const itemsKey = items
-    .flatMap((i) => [`${i.level}:${i.id}`, ...i.children.map((c) => `3:${c.id}`)])
+    .flatMap((i) => [
+      `${i.level}:${i.id}`,
+      ...i.children.map((c) => `3:${c.id}`),
+    ])
     .join("|");
   const [active, setActive] = useState("");
   const [open, setOpen] = useState(false);
@@ -156,6 +159,17 @@ export default function BlogToc({ entries }: { entries: TocEntry[] }) {
     smoothScrollTo(id, snapRestoreRef);
   };
 
+  // The h2 whose own id, or one of whose h3 children's ids, is the active
+  // heading. Only that section's h3 list is revealed; the rest collapse.
+  const currentH2Id = (() => {
+    if (!active) return "";
+    for (const item of items) {
+      if (item.id === active) return item.id;
+      if (item.children.some((c) => c.id === active)) return item.id;
+    }
+    return "";
+  })();
+
   const renderList = (extraClass = "") => (
     <ul className={`flex flex-col gap-0.5 ${extraClass}`}>
       {items.map((item) => (
@@ -170,21 +184,29 @@ export default function BlogToc({ entries }: { entries: TocEntry[] }) {
             {item.text}
           </button>
           {item.children.length > 0 && (
-            <ul className="mt-0.5 flex flex-col gap-0.5">
-              {item.children.map((child) => (
-                <li key={child.id}>
-                  <button
-                    onClick={() => onClickItem(child.id)}
-                    aria-current={active === child.id ? "true" : undefined}
-                    className={`block w-full truncate rounded-md py-1 pl-6 pr-3 text-left text-xs transition-colors hover:bg-white/5 ${
-                      active === child.id ? "ink bg-white/10" : "ink-3"
-                    }`}
-                  >
-                    {child.text}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div
+              className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                currentH2Id === item.id
+                  ? "grid-rows-[1fr]"
+                  : "grid-rows-[0fr]"
+              }`}
+            >
+              <ul className="flex flex-col gap-0.5 overflow-hidden pt-0.5">
+                {item.children.map((child) => (
+                  <li key={child.id}>
+                    <button
+                      onClick={() => onClickItem(child.id)}
+                      aria-current={active === child.id ? "true" : undefined}
+                      className={`block w-full truncate rounded-md py-1 pl-6 pr-3 text-left text-xs transition-colors hover:bg-white/5 ${
+                        active === child.id ? "ink bg-white/10" : "ink-3"
+                      }`}
+                    >
+                      {child.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </li>
       ))}
@@ -193,14 +215,14 @@ export default function BlogToc({ entries }: { entries: TocEntry[] }) {
 
   return (
     <>
-      {/* Desktop: vertically centered, just left of the content container.
+      {/* Desktop: top edge at 33% down, just left of the content container.
          50% - 24rem (half content) - 1rem (gap) - 14rem (own width) = 50% - 39rem.
          Clamped so it stays on-screen at the lg breakpoint where the content
          column doesn't yet leave full room for it. */}
       <aside
         aria-label="Table of contents"
         style={{ left: "max(1.25rem, calc(50% - 39rem))" }}
-        className="frost no-scrollbar fixed top-1/4 z-30 hidden max-h-[80vh] w-56 -translate-y-1/2 overflow-y-auto rounded-2xl p-3 shadow-lg shadow-black/30 lg:block"
+        className="frost no-scrollbar fixed top-1/4 z-30 hidden max-h-[calc(67vh-2rem)] w-56 overflow-y-auto rounded-2xl p-3 shadow-lg shadow-black/30 lg:block"
       >
         <p className="ink-3 mb-2 px-3 text-xs font-semibold uppercase tracking-wider">
           On this page

@@ -3,6 +3,7 @@ import Section from "@/components/Section";
 import Entry from "@/components/Entry";
 import SocialLinks from "@/components/SocialLinks";
 import ProjectsCarousel from "@/components/ProjectsCarousel";
+import FriendsCarousel from "@/components/FriendsCarousel";
 import ScrollSpy from "@/components/ScrollSpy";
 import { experience } from "@/content/experience";
 import { about } from "@/content/about";
@@ -44,6 +45,10 @@ export default function Home() {
             />
           ))}
         </div>
+      </Section>
+
+      <Section id="friends" lead="These are my" title="Friends." full>
+        <FriendsCarousel />
       </Section>
     </main>
   );
