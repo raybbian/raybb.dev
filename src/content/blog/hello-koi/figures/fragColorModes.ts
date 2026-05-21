@@ -91,10 +91,27 @@ class FragColorSketch implements Sketch {
     // each panel's centre on turns, both panels see the same lag.
     const head = fish.spine.joints[0];
     this.camera.follow(head.x, head.y, dt);
-    const leftCam = createHeadCamera(this.camera.x, this.camera.y, panelW / 2, h / 2);
-    const rightCam = createHeadCamera(this.camera.x, this.camera.y, panelW + panelW / 2, h / 2);
+    const leftCam = createHeadCamera(
+      this.camera.x,
+      this.camera.y,
+      panelW / 2,
+      h / 2,
+    );
+    const rightCam = createHeadCamera(
+      this.camera.x,
+      this.camera.y,
+      panelW + panelW / 2,
+      h / 2,
+    );
 
-    const drawTri = (cam: (v: Vec2) => Vec2, a: Vec2, b: Vec2, c: Vec2, u: number, v: number) => {
+    const drawTri = (
+      cam: (v: Vec2) => Vec2,
+      a: Vec2,
+      b: Vec2,
+      c: Vec2,
+      u: number,
+      v: number,
+    ) => {
       const ca = cam(a);
       const cb = cam(b);
       const cc = cam(c);
@@ -157,10 +174,6 @@ class FragColorSketch implements Sketch {
     ctx.font = P.font;
     ctx.fillText("world space", 10, 18);
     ctx.fillText("body space (uv)", panelW + 10, 18);
-
-    ctx.font = "11px ui-monospace, monospace";
-    ctx.fillText("color = hsl(gl_FragCoord.xy / resolution, …);", 10, h - 10);
-    ctx.fillText("color = hsl(v_uv, …);", panelW + 10, h - 10);
   }
 
   dispose() {}

@@ -165,11 +165,6 @@ class CatmullSketch implements Sketch {
     ctx.strokeStyle = P.accent;
     ctx.lineWidth = 2.5;
     this.stroke(this.rightSmooth, true);
-
-    ctx.fillStyle = P.hint;
-    ctx.font = P.font;
-    ctx.fillText("drag the points", lr.x, h - 8);
-    ctx.fillText("Catmull-Rom on the real fish mesh", w / 2 + 12, h - 8);
   }
 
   dispose() {}

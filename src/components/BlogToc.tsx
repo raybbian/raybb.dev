@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FaListUl } from "react-icons/fa6";
-import type { TocEntry } from "./TocProvider";
+
+type TocEntry = { id: string; text: string; level: 2 | 3 };
 
 type TocItem = {
   id: string;
@@ -11,14 +12,11 @@ type TocItem = {
   children: TocItem[];
 };
 
-// Dedup by id (StrictMode renders bodies twice, so TocRegister pushes
-// twice per heading), then group H3s under their preceding H2.
+// Group H3s under their preceding H2.
 function buildTree(entries: TocEntry[]): TocItem[] {
-  const seen = new Map<string, TocEntry>();
-  for (const e of entries) if (!seen.has(e.id)) seen.set(e.id, e);
   const out: TocItem[] = [];
   let parent: TocItem | null = null;
-  for (const e of seen.values()) {
+  for (const e of entries) {
     const item: TocItem = { ...e, children: [] };
     if (e.level === 2) {
       out.push(item);
@@ -31,6 +29,16 @@ function buildTree(entries: TocEntry[]): TocItem[] {
     }
   }
   return out;
+}
+
+// Pull a heading's display text out of the rendered DOM, omitting the
+// HeadingAnchor "#" button that's appended as a sibling span.
+function headingText(h: HTMLElement): string {
+  const clone = h.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll('span:has(button[aria-label^="Copy link"])')
+    .forEach((el) => el.remove());
+  return (clone.textContent ?? "").trim();
 }
 
 // Smooth scroll that survives iOS Safari's scroll-snap snap-back, mirrored
@@ -63,19 +71,66 @@ function smoothScrollTo(
   }
 }
 
-export default function BlogToc({ entries }: { entries: TocEntry[] }) {
-  const items = buildTree(entries);
-  // Content-derived key for effect deps: `entries` identity flips every
-  // TocProvider render even when the headings haven't actually changed.
+export default function BlogToc() {
+  const [items, setItems] = useState<TocItem[]>([]);
+  const [active, setActive] = useState("");
+  const [open, setOpen] = useState(false);
+  const snapRestoreRef = useRef<(() => void) | null>(null);
+
+  // Scan the post for headings. Done in an effect (not during render) so it
+  // sidesteps the React 19 streaming-SSR race that broke the previous
+  // collector-via-context approach — same class of bug FootnoteScope works
+  // around. MutationObserver picks up headings that stream in late from
+  // async server components.
+  useEffect(() => {
+    const root = document.querySelector("[data-blog-content]");
+    if (!root) return;
+    const scan = () => {
+      const headings = Array.from(
+        root.querySelectorAll<HTMLElement>("h2[id], h3[id]"),
+      );
+      const entries: TocEntry[] = headings.map((h) => ({
+        id: h.id,
+        text: headingText(h),
+        level: h.tagName === "H2" ? 2 : 3,
+      }));
+      setItems((prev) => {
+        const next = buildTree(entries);
+        const sameLength = prev.length === next.length;
+        if (
+          sameLength &&
+          prev.every((p, i) => {
+            const n = next[i];
+            return (
+              p.id === n.id &&
+              p.text === n.text &&
+              p.children.length === n.children.length &&
+              p.children.every(
+                (pc, j) => pc.id === n.children[j].id && pc.text === n.children[j].text,
+              )
+            );
+          })
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
+    scan();
+    const observer = new MutationObserver(scan);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  // Content-derived key for effect deps: a stable signature of the current
+  // heading set, so the IntersectionObserver only re-binds when the headings
+  // actually change.
   const itemsKey = items
     .flatMap((i) => [
       `${i.level}:${i.id}`,
       ...i.children.map((c) => `3:${c.id}`),
     ])
     .join("|");
-  const [active, setActive] = useState("");
-  const [open, setOpen] = useState(false);
-  const snapRestoreRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const flat: string[] = [];
@@ -127,8 +182,7 @@ export default function BlogToc({ entries }: { entries: TocEntry[] }) {
     );
     elements.forEach((el) => io.observe(el));
 
-    // Seed from current hash if present. Can't be a lazy useState init —
-    // window isn't defined at SSR and the value would mismatch on hydration.
+    // Seed from current hash if present.
     const initial = window.location.hash.replace("#", "");
     if (initial && ids.has(initial)) {
       lastBest = initial;
@@ -138,7 +192,7 @@ export default function BlogToc({ entries }: { entries: TocEntry[] }) {
 
     return () => io.disconnect();
     // itemsKey captures heading-set changes; `items` is intentionally
-    // omitted because its identity flips every parent render.
+    // omitted because we only care about heading identity, not array refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemsKey]);
 

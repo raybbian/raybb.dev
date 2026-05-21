@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Panel from "@/components/Panel";
-import { FootnotesProvider } from "@/components/FootnotesProvider";
-import { TocProvider } from "@/components/TocProvider";
+import BlogToc from "@/components/BlogToc";
 import { getPost, postSlugs } from "@/content/blog";
 import { readingTimeMinutes } from "@/content/blog/readingTime";
 
@@ -47,16 +46,13 @@ export default async function BlogPost({
           {meta.date} · {readingTimeMinutes(slug)} min read
         </p>
       </div>
-      <TocProvider>
-        <Panel
-          className="mt-3 rounded-none px-5 py-8 sm:rounded-2xl sm:px-10 sm:py-10"
-          data-blog-content
-        >
-          <FootnotesProvider>
-            <Post />
-          </FootnotesProvider>
-        </Panel>
-      </TocProvider>
+      <Panel
+        className="mt-3 rounded-none px-5 py-8 sm:rounded-2xl sm:px-10 sm:py-10"
+        data-blog-content
+      >
+        <Post />
+      </Panel>
+      <BlogToc />
     </main>
   );
 }

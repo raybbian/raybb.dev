@@ -7,7 +7,10 @@ import { FishRenderer } from "@/render/FishRenderer";
 import { PatternBakeProgram } from "@/render/patternBaker";
 import { figureScreenScale, FIGURE_FISH_SCALE } from "@/figures/scale";
 import { createFigureFish } from "@/figures/figureFish";
-import { shiftFishGeometryToHead, SmoothFollowCamera } from "@/figures/fishCamera";
+import {
+  shiftFishGeometryToHead,
+  SmoothFollowCamera,
+} from "@/figures/fishCamera";
 import { drawVerticalDivider } from "@/figures/canvas2d";
 import VS from "@/render/shaders/water.vert.glsl";
 import FS from "./shaders/koiPattern.frag.glsl";
@@ -161,8 +164,10 @@ class UVMappingSketch implements Sketch {
     gl.viewport(vxLeftW, 0, vxRightW, ph);
     this.patBaker.use();
     this.patBaker.setPalette(DEFAULT_KOI_COLORS);
-    if (this.patUvCenter) gl.uniform2f(this.patUvCenter, PAT_U_CENTER, PAT_V_CENTER);
-    if (this.patUvRange) gl.uniform2f(this.patUvRange, PAT_U_RANGE, PAT_V_RANGE);
+    if (this.patUvCenter)
+      gl.uniform2f(this.patUvCenter, PAT_U_CENTER, PAT_V_CENTER);
+    if (this.patUvRange)
+      gl.uniform2f(this.patUvRange, PAT_U_RANGE, PAT_V_RANGE);
     this.patBaker.bake();
 
     // --- 2D canvas composite + overlays ---
@@ -181,7 +186,6 @@ class UVMappingSketch implements Sketch {
     this.drawPatternRect(rx0, rw, h);
     if (corners) this.drawCornerLines(geo, corners, rx0, rw, h);
     drawVerticalDivider(ctx, w / 2, h, P.divider);
-    this.drawLabels(rx0, h);
   }
 
   private uvAt(geo: FishGeometry, vertIdx: number): Vec2 {
@@ -321,18 +325,6 @@ class UVMappingSketch implements Sketch {
       ctx.lineTo(pp.x, pp.y);
       ctx.stroke();
     }
-    ctx.restore();
-  }
-
-  private drawLabels(rx0: number, h: number) {
-    const { ctx } = this;
-    ctx.save();
-    ctx.font = P.font;
-    ctx.fillStyle = P.hint;
-    ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "left";
-    ctx.fillText("fish", 12, h - 10);
-    ctx.fillText("texture (UV space)", rx0 + 12, h - 10);
     ctx.restore();
   }
 

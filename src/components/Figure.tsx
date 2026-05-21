@@ -94,7 +94,15 @@ export function Figure({
         host = { kind: "webgl2", canvas, gl };
       }
 
-      const sketch = mod.create(host, theme);
+      // Read theme straight from the DOM (set by /theme-bootstrap.js before
+      // paint). useTheme's useSyncExternalStore returns the server snapshot
+      // ("light") during hydration; if IntersectionObserver activates this
+      // figure before React reconciles to the real value, the captured
+      // `theme` would be wrong and the sketch would mount in light then fade
+      // into dark on the first frame.
+      const initialTheme =
+        document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+      const sketch = mod.create(host, initialTheme);
       sketchRef.current = sketch;
 
       // Placement of the intrinsic-aspect drawing area inside the box.

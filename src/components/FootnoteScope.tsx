@@ -1,42 +1,46 @@
-"use client";
+import { Children, isValidElement, type ReactNode } from "react";
+import { Footnote } from "./Footnote";
 
-import { createContext, useContext, type ReactNode } from "react";
+// Walk children synchronously for inline <Footnote> markers and render their
+// bodies in a small list directly beneath. No context, no render-time
+// mutation — the previous "register during child render, read during sibling
+// render" pattern was unsafe under React 19 streaming SSR. Async server
+// components elsewhere in the tree (e.g. <CodeSnippet> awaiting shiki)
+// caused sibling client subtrees to be retried; the committed collector
+// could end up empty on one side of the SSR/CSR boundary, leaving stray
+// list entries missing in the server HTML.
 
-// One scope per paragraph. Inline <Footnote>s register into a plain
-// per-render collector during the paragraph's render; <FootnoteList> is a
-// *later sibling*, so by the time it renders the collector is populated —
-// no refs, no effects, no flash. Entries are de-duped by number.
+type FootnoteEntry = { n: number; content: ReactNode };
 
-export type FootnoteEntry = { n: number; content: ReactNode };
-type ScopeCtx = { register: (e: FootnoteEntry) => void };
-
-const Ctx = createContext<ScopeCtx | null>(null);
-
-export function useFootnoteScope(): ScopeCtx | null {
-  return useContext(Ctx);
+function collect(node: ReactNode, out: FootnoteEntry[]): void {
+  Children.forEach(node, (child) => {
+    if (!isValidElement(child)) return;
+    const props = child.props as { n?: number; children?: ReactNode };
+    if (child.type === Footnote) {
+      if (typeof props.n === "number") {
+        out.push({ n: props.n, content: props.children });
+      }
+      return;
+    }
+    if (props.children !== undefined) collect(props.children, out);
+  });
 }
 
 export function FootnoteScope({ children }: { children: ReactNode }) {
-  // Fresh array each render: child <Footnote>s push during the children
-  // subtree render, the <FootnoteList> sibling reads it afterwards.
-  const collector: FootnoteEntry[] = [];
+  const entries: FootnoteEntry[] = [];
+  collect(children, entries);
   return (
-    <Ctx.Provider value={{ register: (e) => collector.push(e) }}>
+    <>
       {children}
-      <FootnoteList entries={collector} />
-    </Ctx.Provider>
+      {entries.length > 0 && <FootnoteList entries={entries} />}
+    </>
   );
 }
 
 function FootnoteList({ entries }: { entries: FootnoteEntry[] }) {
-  const seen = new Map<number, ReactNode>();
-  for (const e of entries) if (!seen.has(e.n)) seen.set(e.n, e.content);
-  if (seen.size === 0) return null;
-  const items = [...seen.entries()].sort((a, b) => a[0] - b[0]);
-
   return (
     <div className="ink-3 mt-2 mb-4 space-y-1 border-l-2 border-white/10 pl-4 text-sm">
-      {items.map(([n, content]) => (
+      {entries.map(({ n, content }) => (
         <p key={n} id={`fn-${n}`} className="leading-relaxed">
           <a
             href={`#fnref-${n}`}

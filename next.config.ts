@@ -24,7 +24,11 @@ const nextConfig: NextConfig = {
 const withMDX = createMDX({
   options: {
     // String names: Turbopack can't pass JS function plugins to Rust.
-    remarkPlugins: ["remark-gfm", "remark-math"],
+    remarkPlugins: [
+      path.resolve(process.cwd(), "remark-number-footnotes.mjs"),
+      "remark-gfm",
+      "remark-math",
+    ],
     rehypePlugins: [
       "@myriaddreamin/rehype-typst",
       path.resolve(process.cwd(), "rehype-strip-typst-namespaces.mjs"),

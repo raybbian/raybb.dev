@@ -15,7 +15,7 @@ import instancingScreenshot from "./figures/instancing.png";
 
 # Building a Procedural Koi Pond in WebGL
 
-You may have come across [this]() video at some point in time. When I did, I immediately knew that it was going to be the basis for my next personal website. A lot of the procedural animation techniques are ~~copied~~ taken from that video. I'd suggest giving it a watch! It is very well made, and goes into more depth on how inverse kinematics can be applied to animate legs as well.
+You may have come across [this](https://www.youtube.com/watch?v=qlfh_rv6khY) video at some point in time. When I did, I immediately knew that it was going to be the basis for my next personal website. A lot of the procedural animation techniques are ~~copied~~ taken from that video. I'd suggest giving it a watch! It is very well made, and goes into more depth on how inverse kinematics can be applied to animate legs as well.
 
 ## Rendering the Fish
 
@@ -29,7 +29,7 @@ As in the video, the shape of the fish is generated using a sequence of circles 
 
 ### Smoothing
 
-Taking these points by themselves produces a jagged line. We can take improve this by smoothing out the fish body with Catmull-Rom curves. Catmull-Rom curves, like Bezier curves, use points to define the actual shape of the curve. However, Catmull-Rom curves are useful because it ensures that the points used to define the curve end up on the curve itself.
+Taking these points by themselves produces a jagged line. We can take improve this by smoothing out the fish body with Catmull-Rom curves. Catmull-Rom curves, like Bezier curves, use points to define the actual shape of the curve. However, Catmull-Rom curves are useful because they ensure that the points used to define the curve end up on the curve itself.
 
 <Figure
   id="catmull-rom"
@@ -43,7 +43,7 @@ WebGL, the web version of OpenGL, is a low to mid-level graphics API that is the
 
 ### Triangularization
 
-For general polygons, one method for triangularization is called ear clipping. Ear clipping repeatedly identifies a triangle whose corner "pokes out" of the polygon, and removes it, labeling it as a triangle. If the polygon has $n$ vertices, then we must identify at least $n-2$ triangles, each of which requires an $O(n)$ check to see if it truly "sticks out" of the polygon.
+For general polygons, one method for triangularization is called ear clipping. Ear clipping repeatedly identifies a triangle whose corner "pokes out" of the polygon, and removes it, labeling it as a triangle. If the polygon has $n$ vertices, then we must identify at least $n-2$ triangles, each of which requires a linear $O(n)$<Footnote>This is Big-O notation, which shows how long a program takes as a function of its input. You can learn more about Big-O [here](https://en.wikipedia.org/wiki/Big_O_notation).</Footnote> check to see if it truly "sticks out" of the polygon.
 
 <Figure
   id="ear-clip"
@@ -61,7 +61,7 @@ Once again, the optimization lies in pushing past generalization. We can clearly
   caption="Triangles all the way down. Click to see the triangularization method in use."
 />
 
-I wont go too much in depth on how exactly to animate the fish (as well as add eyes, fins, and a mouth) as I think [the video]() linked at the [start]() does it better. But once all that is implemented, you have a fully animated fish!
+I wont go too much in depth on how exactly to animate the fish (as well as add eyes, fins, and a mouth) as I think [the video](https://www.youtube.com/watch?v=qlfh_rv6khY) linked at the start does it better. But once all that is implemented, you have a fully animated fish!
 
 <Figure
   id="fish-swim"
@@ -89,7 +89,7 @@ In particular, we are interested in number 2. For example, we would want to make
 
 ### Noise
 
-Fortunately for me (and you), there already exists literature on how to generate realistic looking koi patterns with shaders. These methods involve noise functions/maps, which allow us to create forms of randomness with shaders. In particular, we are interested in **value** noise, which looks like this:
+Fortunately for me (and you), there already exists literature<Footnote>https://jobtalle.com/digital_koi_breeding.html.</Footnote> on how to generate realistic looking koi patterns with shaders. These methods involve noise functions/maps, which allow us to create forms of randomness with shaders. In particular, we will be using **value** noise, which looks like this:
 
 <Figure
   id="value-noise"
@@ -97,7 +97,7 @@ Fortunately for me (and you), there already exists literature on how to generate
   caption="Value noise: hash the integer lattice, then bilinearly interpolate with a smoothstep. Drag to pan."
 />
 
-If we take multiple outcomes of value noise, combine them at different scales, warp the result so the lines become wiggly, and then use 2 thresholds to separate the values into 3 colors, we can achieve a fairly realistic looking koi pattern!
+If we take multiple outcomes of value noise, combine them at different scales, warp the result<Footnote>Using Fractal Brownian Motion, which we will see later.</Footnote> so the lines become wiggly, and then use 2 thresholds to separate the values into 3 colors, we can achieve a fairly realistic looking koi pattern!
 
 <Figure
   id="koi-steps"
@@ -202,7 +202,7 @@ As all of the objects that sit on the water should produce roughly circular ripp
 <Figure
   id="ripple-textures"
   aspect={2.4}
-  caption="Left (foam mask) uses a MAX blend, so overlapping rings cap at the brighter contribution; right (displacement) uses additive blending, so the signed offsets stack into a brighter ridge where the rings meet. Drag horizontally to change the spacing."
+  caption="Left (foam mask) uses a max blend, so overlapping rings cap at the brighter contribution. Right (displacement) uses additive blending, so ripples stack together. Drag horizontally to change the spacing."
 />
 
 Then, we reference these two textures while rendering the water, using the intensity texture to determine the color, and the displacement texture to determine the refraction offset (more on this later).
@@ -211,7 +211,7 @@ Then, we reference these two textures while rendering the water, using the inten
 
 The third case is more interesting. By rendering the scene from the bottom up, we can notice that by the time we want to render the water layer, everything under the water has already been rendered. To refract the water, we can simply sample this already-rendered layer, displacing each pixel by a certain offset.
 
-"How do we know how much to displace each pixel?" you might ask? Well, with noise of course! In this case, we use Fractal Brownian Motion, shown below:
+"How do we know how much to displace each pixel?" you might ask? Well, with noise of course! In this case, we use Fractal Brownian Motion, the same technique we used to generate koi patterns, shown below:
 
 <Figure
   id="displacement-noise"
@@ -239,8 +239,40 @@ Yippee! Now, we have water shaders that make the scene look much more alive!
 
 ## Efficient Stylized Shadows 
 
-Despite all of this, our scene is still looking rather flat. That's because it is: there are no shadows at all! Lotuses and lilypads should cast shadows on the water, fish should cast shadows on other fish, and these shadows need to dance to reflect the motion of the water.
+Despite all of this, our scene is still looking rather flat. That's because it is: there are no shadows at all! Lotuses and lilypads should cast shadows on the water, fish should cast shadows on other fish, and these shadows need to dance to reflect the motion of the water. Still so much to do!
 
-<Todo/>
+<Figure
+  id="shadows-on-off"
+  aspect={2.4}
+  caption="Drag to turn shadows on and off!"
+/>
+
+Once again, we are going to use certain properties of our use case in order to come up with a solution that is efficient, but still provides the results that we want. We can see that we only have one single light in the scene: the sun. The sun (being the sun) is very far away, which means that shadows will remain the same size as the object that casts them, and shadows will always be cast in the same angle.
+
+To determine whether a pixel is shadowed, the questions we need to answer are: "is there an object above me?" and "how far is that object from where I am?" It turns out one easy way to answer these questions, is yet again, with the help of another texture.
+
+We start by rendering a _heightmap_, which effectively sits at the bottom of our pond floor. In this texture, a pixel represents the height of the tallest object that would cast a shadow at that pixel. Once we actually render an object, we check the heightmap to see if the current pixel would obstruct a shadow, and if so, at what height the shadow was cast from. 
+
+<Figure
+  id="heightmap-diagram"
+  aspect={2.4}
+  caption="Left: the pond floor stores each caster's height where its shadow lands. Right: to shadow a fragment, the shader walks down-sun and reads the texel — `h = 1.0` tells it a lotus sits above."
+/>
+
+If that value is greater than our current height value, then we darken the current pixel relative to the distance between them. To make these shadows seem less like cutouts, we also add displacement to the shadow if it passes through the water surface. Voila! Shadows that make our scene much less flatter.
+
+## Final Optimizations
+
+I won't dive too deep, but several optimizations can still be made here. These include:
+- Decreasing the render resolution if a device can not render the scene at 60fps.
+- Reducing the number of allocations and inlining some function calls to reduce lag spikes from garbage collection.
+
+In general, you should always _profile_ your code when deciding what to optimize next. Rewriting your codebase in Rust doesn't do anything if you are rendering a terribly optimized shader, for example. You can press `p` to see more information about how long each part of the scene takes to render!<Footnote>Support varies across browsers. You may need to enable WebGL2 developer extensions on Chromium-based browsers, for example.</Footnote>
+
+## Conclusion
+
+Ultimately, the takeaway from this blog (besides you learning about the tech behind the koi pond) is to realize that pretty much everything in software engineering has a trade off. This could be between memory complexity vs time complexity in some program, or it could be between code readability vs performance in the code you write. In our case, we needed to utilize the less-general and harder-to-use features of WebGL to control and optimize our code. We also sacrificed realism<Footnote>For example, shadows should be curved on the fish to highlight the shape of the fish, and ripples should interact with each other.</Footnote> for efficiency and a "toon" style.
+
+Regardless, this is my 6th personal website, and it is one that I'm finally really happy with. Hopefully that stays the case!
 
 </FiguresProvider>

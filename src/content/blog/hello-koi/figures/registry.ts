@@ -26,6 +26,8 @@ export const figures: FigureRegistry = {
   "fish-behavior": () => import("./fishBehavior"),
   "flat-vs-toon": () => import("./flatVsToon"),
   "water-refract": () => import("./waterRefract"),
+  "shadows-on-off": () => import("./shadowsOnOff"),
+  "heightmap-diagram": () => import("./heightmapDiagram"),
 };
 
 export type FigureId = keyof typeof figures;
