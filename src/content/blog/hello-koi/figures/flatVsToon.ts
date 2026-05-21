@@ -73,11 +73,11 @@ class FlatVsToonSketch implements Sketch {
     this.scene.setTheme(theme);
   }
 
-  resize(w: number, h: number, dpr: number) {
+  resize(w: number, h: number, dpr: number, screenScale: number) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
-    this.scene.resize(w, h);
+    this.scene.resize(w, h, screenScale);
     this.sceneFbo.resize(
       Math.max(1, Math.round(w * dpr)),
       Math.max(1, Math.round(h * dpr)),

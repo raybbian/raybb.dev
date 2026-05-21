@@ -4,6 +4,7 @@ import { LOTUS_INST_FLOATS } from "@/sim/Lotuses";
 import { createProgram } from "@/lib/gl";
 import { PALETTE as P } from "@/figures/palette";
 import { SliderUI } from "@/figures/SliderUI";
+import { ThemeMixer } from "@/figures/theme";
 
 const TRACK_H = 4;
 const KNOB_RADIUS = 9;
@@ -45,9 +46,12 @@ void main() {
 }`;
 
 class LotusPetalMixSketch implements Sketch {
-  animated = false;
+  // RAF loop must run so ThemeMixer can ease the palette across frames; the
+  // host pauses it via IntersectionObserver when the figure is offscreen.
+  animated = true;
   private gl: WebGL2RenderingContext;
   private renderer: LotusRenderer;
+  private theme: ThemeMixer;
   private rectProg: WebGLProgram;
   private rectVao: WebGLVertexArrayObject;
   private rectResLoc: WebGLUniformLocation;
@@ -63,7 +67,8 @@ class LotusPetalMixSketch implements Sketch {
   constructor(gl: WebGL2RenderingContext, theme: FigureTheme) {
     this.gl = gl;
     this.renderer = new LotusRenderer(gl);
-    this.renderer.setTheme(theme === "light" ? 1 : 0);
+    this.theme = new ThemeMixer(theme);
+    this.renderer.setTheme(this.theme.mix);
     this.rectProg = createProgram(gl, RECT_VS, RECT_FS);
     this.rectResLoc = gl.getUniformLocation(this.rectProg, "u_res")!;
     this.rectMinLoc = gl.getUniformLocation(this.rectProg, "u_rectPxMin")!;
@@ -75,10 +80,13 @@ class LotusPetalMixSketch implements Sketch {
   }
 
   setTheme(theme: FigureTheme) {
-    this.renderer.setTheme(theme === "light" ? 1 : 0);
+    this.theme.setTarget(theme);
   }
 
-  resize(w: number, h: number) {
+  // Slider chrome (TRACK_H, KNOB_RADIUS) is a UI affordance and stays at
+  // constant logical px. Petal length is derived from canvas dimensions, so
+  // it already scales geometrically with the figure box.
+  resize(w: number, h: number, _dpr: number, _screenScale: number) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
@@ -140,12 +148,13 @@ class LotusPetalMixSketch implements Sketch {
     gl.bindVertexArray(null);
   }
 
-  frame() {
+  frame(_t: number, dt: number) {
     const gl = this.gl;
     const { w, h } = this;
     gl.clearColor(P.bgGL[0], P.bgGL[1], P.bgGL[2], P.bgGL[3]);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (w === 0 || h === 0) return;
+    if (this.theme.advance(dt)) this.renderer.setTheme(this.theme.mix);
     this.renderer.setBulge(this.slider.value);
     this.renderer.draw(this.petalData, 1, w, h, 0);
     this.drawSlider();

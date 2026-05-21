@@ -20,7 +20,26 @@ export async function generateMetadata({
   const { slug } = await params;
   const meta = getPost(slug)?.meta;
   if (!meta) return {};
-  return { title: `${meta.title} — Raymond Bian`, description: meta.description };
+  const thumb = `/thumbnails/${slug}.png`;
+  const url = `/blog/${slug}`;
+  return {
+    title: meta.title,
+    description: meta.description,
+    openGraph: {
+      type: "article",
+      title: meta.title,
+      description: meta.description,
+      url,
+      publishedTime: meta.date,
+      images: [{ url: thumb, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: meta.title,
+      description: meta.description,
+      images: [thumb],
+    },
+  };
 }
 
 export default async function BlogPost({
@@ -33,8 +52,23 @@ export default async function BlogPost({
   if (!post) notFound();
   const { Component: Post, meta } = post;
 
+  const postingJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: meta.title,
+    description: meta.description,
+    datePublished: meta.date,
+    author: { "@type": "Person", name: "Raymond Bian" },
+    image: `/thumbnails/${slug}.png`,
+    mainEntityOfPage: { "@type": "WebPage", "@id": `/blog/${slug}` },
+  };
+
   return (
     <main className="mx-auto w-full max-w-3xl px-0 py-20 sm:px-6 sm:py-28">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(postingJsonLd) }}
+      />
       <div className="px-5 sm:px-0">
         <Link
           href="/blog"

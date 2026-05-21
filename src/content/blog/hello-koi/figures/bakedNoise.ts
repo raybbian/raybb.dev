@@ -101,7 +101,7 @@ class BakedNoiseSketch implements Sketch {
     this.theme.setTarget(theme);
   }
 
-  resize(w: number, h: number, dpr: number) {
+  resize(w: number, h: number, dpr: number, _screenScale: number) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;

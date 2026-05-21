@@ -1,6 +1,7 @@
 import type { FigureModule, Sketch } from "@/figures/types";
 import { drawArrow, drawVerticalDivider } from "@/figures/canvas2d";
 import { PALETTE as P } from "@/figures/palette";
+import { figureFont, figurePx } from "@/figures/scale";
 
 // Top-down diagram explaining the heightmap. The pond floor is the panel
 // itself; the circle (tall caster, h=1.0) and the square (shorter caster,
@@ -122,6 +123,7 @@ function drawHeightmapCells(
   x0: number,
   L: Layout,
   labels: boolean,
+  screenScale: number,
 ) {
   ctx.save();
   ctx.fillStyle = SQUARE_CELL_FILL;
@@ -139,7 +141,7 @@ function drawHeightmapCells(
 
   if (labels) {
     ctx.fillStyle = P.point;
-    ctx.font = P.font;
+    ctx.font = figureFont(screenScale);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     // "h = 0.5" goes in the part of the square cell that isn't covered by
@@ -158,10 +160,11 @@ function drawCasters(
   circleAlpha: number,
   squareAlpha: number,
   labelHeights: boolean,
+  screenScale: number,
 ) {
   ctx.save();
   ctx.globalAlpha = squareAlpha;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = figurePx(screenScale, 2);
   ctx.fillStyle = SQUARE_FILL;
   ctx.strokeStyle = SQUARE_STROKE;
   ctx.beginPath();
@@ -177,7 +180,7 @@ function drawCasters(
 
   ctx.save();
   ctx.globalAlpha = circleAlpha;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = figurePx(screenScale, 2);
   ctx.fillStyle = CIRCLE_FILL;
   ctx.strokeStyle = CIRCLE_STROKE;
   ctx.beginPath();
@@ -189,7 +192,7 @@ function drawCasters(
   if (labelHeights) {
     ctx.save();
     ctx.fillStyle = P.point;
-    ctx.font = P.font;
+    ctx.font = figureFont(screenScale);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("h = 1.0", x0 + L.circleX, L.circleY);
@@ -221,7 +224,13 @@ function drawCircleShadowOnSquare(
   ctx.restore();
 }
 
-function drawSunIndicator(ctx: CanvasRenderingContext2D, x0: number) {
+function drawSunIndicator(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  screenScale: number,
+) {
+  // Sun marker is an annotation (UI affordance) — dot, arrow head/size, and
+  // its offset all stay constant. Only the "sun" label font scales.
   const x = x0 + PANEL_INSET + 8;
   const y = PANEL_INSET + 8;
   ctx.save();
@@ -237,17 +246,22 @@ function drawSunIndicator(ctx: CanvasRenderingContext2D, x0: number) {
     headSize: 6,
   });
   ctx.fillStyle = P.hint;
-  ctx.font = P.font;
+  ctx.font = figureFont(screenScale);
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText("sun", tipX + 5, tipY);
   ctx.restore();
 }
 
-function drawRightArrow(ctx: CanvasRenderingContext2D, x0: number, L: Layout) {
+function drawRightArrow(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  L: Layout,
+  screenScale: number,
+) {
   // From the sample pixel on the square down-sun by sun*0.5K to the
-  // circle's heightmap cell. The shader reads h=1.0 there, which exceeds
-  // the square's own height (0.5), so the sample pixel is shadowed.
+  // circle's heightmap cell. The arrow itself stays UI-sized (dashed line,
+  // head, sample-pixel dot); only the labels scale.
   const startX = x0 + L.sampleX;
   const startY = L.sampleY;
   const tipX = x0 + L.cellAX;
@@ -269,7 +283,7 @@ function drawRightArrow(ctx: CanvasRenderingContext2D, x0: number, L: Layout) {
 
   ctx.save();
   ctx.fillStyle = P.point;
-  ctx.font = P.font;
+  ctx.font = figureFont(screenScale);
   ctx.textBaseline = "middle";
   // "sample pixel" sits to the upper-left of P, clear of the dashed line
   // (which heads down-sun, toward the lower-right).
@@ -285,6 +299,7 @@ class HeightmapDiagramSketch implements Sketch {
   private ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
+  private screenScale = 1;
   private layout: Layout | null = null;
 
   constructor(ctx: CanvasRenderingContext2D) {
@@ -293,9 +308,10 @@ class HeightmapDiagramSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  resize(w: number, h: number, _dpr: number, screenScale: number) {
     this.w = w;
     this.h = h;
+    this.screenScale = screenScale;
     if (w === 0 || h === 0) {
       this.layout = null;
       return;
@@ -305,7 +321,7 @@ class HeightmapDiagramSketch implements Sketch {
 
   frame() {
     const ctx = this.ctx;
-    const { w, h, layout } = this;
+    const { w, h, layout, screenScale: s } = this;
     ctx.clearRect(0, 0, w, h);
     if (w === 0 || h === 0 || !layout) return;
     ctx.fillStyle = P.bg;
@@ -315,19 +331,19 @@ class HeightmapDiagramSketch implements Sketch {
     // square — the taller height wins where they overlap), plus the
     // casters themselves with inline height labels.
     drawHeightmapBackground(ctx, 0, layout.panelW, h);
-    drawHeightmapCells(ctx, 0, layout, true);
-    drawCasters(ctx, 0, layout, 1, 1, true);
-    drawSunIndicator(ctx, 0);
+    drawHeightmapCells(ctx, 0, layout, true, s);
+    drawCasters(ctx, 0, layout, 1, 1, true, s);
+    drawSunIndicator(ctx, 0, s);
 
     // Right panel: same heightmap (still opaque). The shader walks down-sun
     // from a sample pixel on the (opaque) square; the circle's shadow lands
     // on the square at that point, and the walk reads h=1.0 at A.
     drawHeightmapBackground(ctx, layout.panelW, layout.panelW, h);
-    drawHeightmapCells(ctx, layout.panelW, layout, false);
-    drawCasters(ctx, layout.panelW, layout, 0.35, 1, false);
+    drawHeightmapCells(ctx, layout.panelW, layout, false, s);
+    drawCasters(ctx, layout.panelW, layout, 0.35, 1, false, s);
     drawCircleShadowOnSquare(ctx, layout.panelW, layout);
-    drawRightArrow(ctx, layout.panelW, layout);
-    drawSunIndicator(ctx, layout.panelW);
+    drawRightArrow(ctx, layout.panelW, layout, s);
+    drawSunIndicator(ctx, layout.panelW, s);
 
     drawVerticalDivider(ctx, layout.panelW, h, P.divider);
   }

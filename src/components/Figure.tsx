@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { FaCheck, FaRegCopy, FaSpinner, FaXmark } from "react-icons/fa6";
 import { useInView } from "@/lib/useInView";
 import { useTheme } from "@/lib/useTheme";
 import { useFigureRegistry } from "@/figures/registryContext";
+import { figureScreenScale } from "@/figures/scale";
 import type { Sketch, SketchHost } from "@/figures/types";
 
 // How a figure's intrinsic aspect maps into the container box:
@@ -41,6 +43,7 @@ export function Figure({
   if (inView && !activated) setActivated(true);
 
   const sketchRef = useRef<Sketch | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctrlRef = useRef<{
     start: () => void;
     stop: () => void;
@@ -48,6 +51,11 @@ export function Figure({
   } | null>(null);
   const inViewRef = useRef(inView);
   const [failed, setFailed] = useState(false);
+  const [copyState, setCopyState] = useState<
+    "idle" | "copying" | "copied" | "error"
+  >("idle");
+  const copyResetTimeoutRef = useRef<number | null>(null);
+  const spinnerDelayRef = useRef<number | null>(null);
 
   useEffect(() => {
     inViewRef.current = inView;
@@ -77,6 +85,7 @@ export function Figure({
       canvas.style.cssText =
         "width:100%;height:100%;display:block;touch-action:none";
       box.appendChild(canvas);
+      canvasRef.current = canvas;
 
       let host: SketchHost;
       if (mod.kind === "2d") {
@@ -89,6 +98,9 @@ export function Figure({
           // Straight (non-premultiplied) alpha so the translucent themed
           // clear color composites over the page correctly.
           premultipliedAlpha: false,
+          // Keep the backing buffer readable so the "Copy PNG" button can
+          // call canvas.toBlob() at any time without capturing a blank frame.
+          preserveDrawingBuffer: true,
         });
         if (!gl) return setFailed(true);
         host = { kind: "webgl2", canvas, gl };
@@ -180,7 +192,7 @@ export function Figure({
       const applySize = () => {
         if (box.clientWidth === 0 || box.clientHeight === 0) return;
         place();
-        sketch.resize(view.dw, view.dh, view.dpr);
+        sketch.resize(view.dw, view.dh, view.dpr, figureScreenScale(view.dw));
         if (!running) redraw();
       };
       const ro = new ResizeObserver(applySize);
@@ -230,6 +242,7 @@ export function Figure({
         sketch.dispose();
         canvas.remove();
         sketchRef.current = null;
+        canvasRef.current = null;
         ctrlRef.current = null;
       };
     })();
@@ -256,17 +269,156 @@ export function Figure({
     ctrlRef.current?.redraw();
   }, [theme]);
 
+  // Clear any pending copy-feedback timeouts if the figure unmounts mid-flash.
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeoutRef.current !== null) {
+        window.clearTimeout(copyResetTimeoutRef.current);
+        copyResetTimeoutRef.current = null;
+      }
+      if (spinnerDelayRef.current !== null) {
+        window.clearTimeout(spinnerDelayRef.current);
+        spinnerDelayRef.current = null;
+      }
+    };
+  }, []);
+
+  const finishCopyState = (next: "copied" | "error") => {
+    if (spinnerDelayRef.current !== null) {
+      window.clearTimeout(spinnerDelayRef.current);
+      spinnerDelayRef.current = null;
+    }
+    setCopyState(next);
+    if (copyResetTimeoutRef.current !== null) {
+      window.clearTimeout(copyResetTimeoutRef.current);
+    }
+    copyResetTimeoutRef.current = window.setTimeout(() => {
+      setCopyState("idle");
+      copyResetTimeoutRef.current = null;
+    }, 1500);
+  };
+
+  const handleCopy = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // Make sure the very latest frame (current theme, current pointer state)
+    // is in the backing buffer before we snapshot it. For paused/static
+    // figures this is the only thing keeping the capture fresh.
+    ctrlRef.current?.redraw();
+    // Defer the spinner so quick captures go straight idle → check; only
+    // large/slow figures trip the 150ms delay and reveal the spinner.
+    if (copyResetTimeoutRef.current !== null) {
+      window.clearTimeout(copyResetTimeoutRef.current);
+      copyResetTimeoutRef.current = null;
+    }
+    if (spinnerDelayRef.current !== null) {
+      window.clearTimeout(spinnerDelayRef.current);
+    }
+    spinnerDelayRef.current = window.setTimeout(() => {
+      setCopyState("copying");
+      spinnerDelayRef.current = null;
+    }, 150);
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        finishCopyState("error");
+        return;
+      }
+      const supportsClipboardImage =
+        typeof navigator !== "undefined" &&
+        !!navigator.clipboard?.write &&
+        typeof window !== "undefined" &&
+        typeof window.ClipboardItem !== "undefined";
+      if (supportsClipboardImage) {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob }),
+          ]);
+          finishCopyState("copied");
+          return;
+        } catch {
+          // fall through to download
+        }
+      }
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `figure-${id}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        finishCopyState("copied");
+      } catch {
+        finishCopyState("error");
+      }
+    }, "image/png");
+  };
+
+  const copyAriaLabel =
+    copyState === "copied"
+      ? "Copied figure as PNG"
+      : copyState === "error"
+        ? "Failed to copy figure"
+        : copyState === "copying"
+          ? "Copying figure"
+          : "Copy figure as PNG";
+
   return (
     <figure ref={rootRef} className="my-8">
       <div
         ref={boxRef}
         style={{ aspectRatio: String(aspect) }}
-        className="relative w-full overflow-hidden rounded-xl border border-white/15 bg-black/20 shadow-lg shadow-black/10"
+        className="group relative w-full overflow-hidden rounded-xl border border-white/15 bg-black/20 shadow-lg shadow-black/10"
       >
         {failed && (
           <div className="ink-3 absolute inset-0 grid place-items-center text-sm">
             Couldn’t load this figure.
           </div>
+        )}
+        {!failed && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            aria-label={copyAriaLabel}
+            aria-live="polite"
+            className="frost ink-2 absolute right-2 top-2 z-10 grid h-9 w-9 place-items-center rounded-full opacity-0 transition-opacity duration-150 hover:bg-black/50 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-60"
+          >
+            <span className="relative grid h-4 w-4 place-items-center">
+              <FaRegCopy
+                aria-hidden
+                className={`col-start-1 row-start-1 transition duration-200 ease-out ${
+                  copyState === "idle"
+                    ? "scale-100 opacity-100"
+                    : "scale-50 opacity-0"
+                }`}
+              />
+              <FaSpinner
+                aria-hidden
+                className={`col-start-1 row-start-1 animate-spin transition duration-200 ease-out ${
+                  copyState === "copying"
+                    ? "scale-100 opacity-100"
+                    : "scale-50 opacity-0"
+                }`}
+              />
+              <FaCheck
+                aria-hidden
+                className={`col-start-1 row-start-1 text-emerald-400 transition duration-200 ease-out ${
+                  copyState === "copied"
+                    ? "scale-100 opacity-100"
+                    : "scale-50 opacity-0"
+                }`}
+              />
+              <FaXmark
+                aria-hidden
+                className={`col-start-1 row-start-1 text-red-400 transition duration-200 ease-out ${
+                  copyState === "error"
+                    ? "scale-100 opacity-100"
+                    : "scale-50 opacity-0"
+                }`}
+              />
+            </span>
+          </button>
         )}
       </div>
       {caption && (

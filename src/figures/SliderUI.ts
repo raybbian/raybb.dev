@@ -1,5 +1,6 @@
 import type { PointerInfo } from "@/figures/types";
 import { PALETTE } from "@/figures/palette";
+import { figureFont } from "@/figures/scale";
 
 export interface SliderConfig {
   bandHeight?: number; // height of the bottom strip reserved for the slider
@@ -109,9 +110,13 @@ export class SliderUI {
   }
 
   // Default 2D rendering — track line, optional step dots (steps > 0),
-  // accent knob, optional labels. earClip uses this directly.
+  // accent knob, optional labels. earClip uses this directly. The slider
+  // chrome (track / knob / step dots / hit area) is a UI affordance and
+  // stays at constant logical px across viewports; `screenScale` is only
+  // used to scale label text so it tracks the rest of the figure's labels.
   draw2D(
     ctx: CanvasRenderingContext2D,
+    screenScale: number,
     opts: { leftLabel?: string; rightLabel?: string } = {},
   ): void {
     const g = this.geometry();
@@ -139,7 +144,7 @@ export class SliderUI {
 
     if (opts.leftLabel || opts.rightLabel) {
       ctx.fillStyle = PALETTE.hint;
-      ctx.font = PALETTE.font;
+      ctx.font = figureFont(screenScale);
       ctx.textBaseline = "alphabetic";
       if (opts.leftLabel) {
         ctx.textAlign = "left";

@@ -143,6 +143,7 @@ export class LilyLotusFigureScene {
 
   private w = 0;
   private h = 0;
+  private _screenScale = 1;
   private lastT: number | null = null;
 
   constructor(gl: WebGL2RenderingContext, theme: FigureTheme) {
@@ -159,10 +160,13 @@ export class LilyLotusFigureScene {
 
   // Deterministic from FIGURE_SEED so the same panel size always reproduces
   // the same scene. A different size reroll because rejection-sampling
-  // consumes a different number of rng() calls.
-  resize(w: number, h: number): void {
+  // consumes a different number of rng() calls. `screenScale` is stored so
+  // figures wrapping this scene can read it back via `screenScale` getter
+  // without re-deriving from canvas width.
+  resize(w: number, h: number, screenScale: number): void {
     this.w = w;
     this.h = h;
+    this._screenScale = screenScale;
     if (w === 0 || h === 0) return;
 
     const rng = mulberry32(FIGURE_SEED);
@@ -247,14 +251,24 @@ export class LilyLotusFigureScene {
     this.lotus.draw(this.lotusInst, this.lotusInstCount, this.w, this.h, 0);
   }
 
-  // Caster pass: caller wraps in ShadowRenderer.begin()/end().
-  castShadows(): void {
-    this.lily.cast(this.lilyInst, this.lilies.length, this.w, this.h, 0);
-    this.lotus.cast(this.lotusInst, this.lotusInstCount, this.w, this.h, 0);
+  // Caster pass: caller wraps in ShadowRenderer.begin()/end(). `shadowScale`
+  // must match what was passed to ShadowRenderer.resize() and what the
+  // receiver shader uploads via applyFigureShadowUniforms — see shadowHelpers.
+  castShadows(shadowScale: number = 1): void {
+    this.lily.cast(
+      this.lilyInst, this.lilies.length, this.w, this.h, 0, shadowScale,
+    );
+    this.lotus.cast(
+      this.lotusInst, this.lotusInstCount, this.w, this.h, 0, shadowScale,
+    );
   }
 
   get themeMix(): number {
     return this.theme.mix;
+  }
+
+  get screenScale(): number {
+    return this._screenScale;
   }
 
   dispose(): void {

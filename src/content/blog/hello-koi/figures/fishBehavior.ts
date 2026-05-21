@@ -5,7 +5,7 @@ import { TreatRenderer } from "@/render/TreatRenderer";
 import { TREAT_INST_FLOATS } from "@/sim/Treats";
 import { PALETTE as P } from "@/figures/palette";
 import { createProgram } from "@/lib/gl";
-import { figureScreenScale, FIGURE_FISH_SCALE, FIGURE_FISH_MAX } from "@/figures/scale";
+import { FIGURE_FISH_SCALE, FIGURE_FISH_MAX } from "@/figures/scale";
 import { createFigureFish } from "@/figures/figureFish";
 import fishFlatFrag from "@/render/shaders/fishFlat.frag.glsl";
 import ellipseFlatFrag from "@/render/shaders/ellipseFlat.frag.glsl";
@@ -247,12 +247,12 @@ class FishBehaviorSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  resize(w: number, h: number, _dpr: number, screenScale: number) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
     // Canvas-relative scale so fish/sense-radii/treats track the panel.
-    this.screenScale = figureScreenScale(w);
+    this.screenScale = screenScale;
     this.treatRadius = TREAT_RADIUS_BASE * this.screenScale;
     this.eatR = EAT_RADIUS_BASE * this.screenScale + this.treatRadius;
     this.eatR2 = this.eatR * this.eatR;
@@ -354,7 +354,7 @@ class FishBehaviorSketch implements Sketch {
 
     for (const f of this.fish) {
       const geo = f.buildGeometry();
-      this.renderer.draw(geo, w, h, 0);
+      this.renderer.draw(geo, w, h, 0, 0, 0, 0, this.screenScale);
     }
 
     // Debug overlay on top: state pips above each fish, eat-radius rings

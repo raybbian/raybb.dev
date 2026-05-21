@@ -30,7 +30,8 @@ class DisplacementNoiseSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  // Fullscreen shader: noise period is in `1/CSS px`, already canvas-relative.
+  resize(w: number, h: number, _dpr: number, _screenScale: number) {
     this.w = w;
     this.h = h;
   }

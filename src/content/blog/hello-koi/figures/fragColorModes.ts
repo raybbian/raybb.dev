@@ -3,7 +3,7 @@ import { fishBodyMesh } from "./fishMesh";
 import { Fish } from "@/sim/Fish";
 import { DEFAULT_KOI_COLORS } from "@/sim/koiPattern";
 import { PALETTE as P } from "@/figures/palette";
-import { figureScreenScale, FIGURE_FISH_SCALE } from "@/figures/scale";
+import { figureScreenScale, FIGURE_FISH_SCALE, figureFont } from "@/figures/scale";
 import { createFigureFish } from "@/figures/figureFish";
 import { createHeadCamera, SmoothFollowCamera } from "@/figures/fishCamera";
 import { drawVerticalDivider } from "@/figures/canvas2d";
@@ -30,6 +30,7 @@ class FragColorSketch implements Sketch {
   private h = 0;
   private worldW = 0;
   private worldH = 0;
+  private screenScale = 1;
   private fish: Fish | null = null;
   private lastT: number | null = null;
   private camera = new SmoothFollowCamera();
@@ -40,15 +41,20 @@ class FragColorSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  // Two-panel figure: the fish lives in a half-width column, so its scale is
+  // derived from `panelW`, not the full canvas. Label text uses the host-
+  // supplied `screenScale` (which IS based on canvas width) so it tracks the
+  // other figures' labels.
+  resize(w: number, h: number, _dpr: number, screenScale: number) {
     this.w = w;
     this.h = h;
+    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
     const panelW = w / 2;
     this.worldW = panelW * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
-    const screenScale = figureScreenScale(panelW);
-    const scale = FIGURE_FISH_SCALE * screenScale;
+    const panelScale = figureScreenScale(panelW);
+    const scale = FIGURE_FISH_SCALE * panelScale;
     this.fish = createFigureFish({
       origin: { x: this.worldW / 2, y: this.worldH / 2 },
       colors: {
@@ -58,7 +64,7 @@ class FragColorSketch implements Sketch {
         fin: DEFAULT_KOI_COLORS.fin,
       },
       scale,
-      screenScale,
+      screenScale: panelScale,
       seed: FIGURE_SEED,
       noisePhase: { heading: FIGURE_NOISE_PHASE },
     });
@@ -171,7 +177,7 @@ class FragColorSketch implements Sketch {
     drawVerticalDivider(ctx, panelW, h, P.divider);
 
     ctx.fillStyle = P.hint;
-    ctx.font = P.font;
+    ctx.font = figureFont(this.screenScale);
     ctx.fillText("world space", 10, 18);
     ctx.fillText("body space (uv)", panelW + 10, 18);
   }

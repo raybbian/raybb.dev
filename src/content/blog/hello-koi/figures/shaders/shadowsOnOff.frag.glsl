@@ -22,10 +22,10 @@ uniform float u_rippleCrest;
 // Wiper bar + accent grab dot (declares u_wiper, u_handleDot).
 #include "../../../../../render/shaders/wiperHandle.glsl"
 
-// Px gain for the wavy shadow on the water surface. Matches production
-// scale roughly: the curl-noise UVs animate at SHADOW_WAVY_SPEED, and at
-// this gain the silhouette wobbles by ~half a foam-collar width.
-const float SHADOW_FIG_WAVY_PX = 100.0;
+// Px gain for the wavy shadow on the water surface. Uploaded as a uniform
+// (figureShadowWavyPx) so the wobble amplitude scales with canvas width —
+// at screenScale=1 this is ~100 px, matching production roughly.
+uniform float u_shadowWavyPx;
 
 out vec4 o;
 
@@ -46,7 +46,7 @@ void main() {
   // dances with the water's refraction (same trick the production water
   // shader uses, just self-driven instead of fed an external refract field).
   // Gated by waterMask so the lily/lotus silhouettes on top stay lit.
-  float hit = shadowHitWavyAuto(v_uv, u_time, SHADOW_FIG_WAVY_PX) * waterMask;
+  float hit = shadowHitWavyAuto(v_uv, u_time, u_shadowWavyPx) * waterMask;
   vec3 shadowedCol = waterCol * (1.0 - u_shadowDark * hit);
 
   // Wiper composite: no-shadow on the left, with-shadow on the right.

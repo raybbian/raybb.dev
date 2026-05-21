@@ -20,6 +20,7 @@ export const figures: FigureRegistry = {
   "uv-mapping": () => import("./uvMapping"),
   "lilypad-wires": () => import("./lilypadWires"),
   "lotus-petal-mix": () => import("./lotusPetalMix"),
+  "lotus-single": () => import("./lotusSingle"),
   "displacement-noise": () => import("./displacementNoise"),
   "baked-noise": () => import("./bakedNoise"),
   "ripple-textures": () => import("./rippleTextures"),

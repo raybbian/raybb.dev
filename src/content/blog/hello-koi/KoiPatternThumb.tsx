@@ -8,12 +8,15 @@ import FS from "./figures/shaders/koiPattern.frag.glsl";
 
 // The koi pattern shader maps body-uv via `st = (uv.x * ASPECT, uv.y)` with
 // ASPECT = 3.0 (see noise.glsl), so feeding equal U/V ranges into a square
-// canvas would squash the noise field 3× in X. We pin V_RANGE and derive
-// U_RANGE from the canvas aspect so the noise stays isotropic at any size:
-//   u_range.x * ASPECT / w == v_range / h  →  u_range.x = v_range * (w/h) / ASPECT
+// canvas would squash the noise field 3× in X. We anchor scale to the
+// SHORTER side of the canvas (cover-style) so noise features keep a
+// constant pixel size at any aspect; the longer side just reveals more
+// pattern. With ref = min(w, h):
+//   v_range = PAT_REF_RANGE * h / ref
+//   u_range = PAT_REF_RANGE * w / ref / ASPECT
 const PAT_U_CENTER = 0.5;
 const PAT_V_CENTER = 0.5;
-const PAT_V_RANGE = 3.0;
+const PAT_REF_RANGE = 3.0;
 const SHADER_ASPECT = 3.0;
 
 // One-shot koi-pattern preview: picks a fresh palette + seed on mount and
@@ -65,8 +68,10 @@ export default function KoiPatternThumb({ className }: { className?: string }) {
           );
         if (uSeed) gl.uniform2fv(uSeed, colors.seed);
         if (uUvCenter) gl.uniform2f(uUvCenter, PAT_U_CENTER, PAT_V_CENTER);
-        const uRange = (PAT_V_RANGE * (w / h)) / SHADER_ASPECT;
-        if (uUvRange) gl.uniform2f(uUvRange, uRange, PAT_V_RANGE);
+        const ref = Math.min(w, h);
+        const vRange = (PAT_REF_RANGE * h) / ref;
+        const uRange = (PAT_REF_RANGE * w) / ref / SHADER_ASPECT;
+        if (uUvRange) gl.uniform2f(uUvRange, uRange, vRange);
       });
     };
 

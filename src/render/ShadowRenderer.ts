@@ -104,8 +104,14 @@ export class ShadowRenderer {
   // `w`/`h` are drawing-buffer px; `dpr` converts the logical guard band to
   // drawing px. Grown by shadowMargin() on BOTH sides in X (sun mirrors with
   // theme) and on the bottom in Y, so a floor-projected caster never clamps.
-  resize(w: number, h: number, dpr: number) {
-    const [mx, my] = shadowMargin();
+  // `shadowScale` (default 1) lets figures shrink the guard band so it
+  // matches the same scaled cast offset their casters were pre-shifted by —
+  // the FBO margin MUST match what the receiver shader expects, otherwise
+  // the texture remap walks off-pixel.
+  resize(w: number, h: number, dpr: number, shadowScale: number = 1) {
+    const [mxRaw, myRaw] = shadowMargin();
+    const mx = mxRaw * shadowScale;
+    const my = myRaw * shadowScale;
     const sw = Math.max(1, w + Math.ceil(2 * mx * dpr));
     const sh = Math.max(1, h + Math.ceil(my * dpr));
     if (sw === this.sw && sh === this.sh) return;

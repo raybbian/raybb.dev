@@ -5,9 +5,26 @@ import Panel from "@/components/Panel";
 import { posts } from "@/content/blog";
 import { readingTimeMinutes } from "@/content/blog/readingTime";
 
+const blogDescription =
+  "Writing on anything I find interesting enough to share.";
+const blogThumb = `/thumbnails/${posts[0].slug}.png`;
+
 export const metadata: Metadata = {
-  title: "Blog — Raymond Bian",
-  description: "Writing on projects, algorithms, and graphics.",
+  title: "Blog",
+  description: blogDescription,
+  openGraph: {
+    type: "website",
+    title: "Blog",
+    description: blogDescription,
+    url: "/blog",
+    images: [{ url: blogThumb, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Blog",
+    description: blogDescription,
+    images: [blogThumb],
+  },
 };
 
 export default function BlogIndex() {
@@ -17,8 +34,8 @@ export default function BlogIndex() {
       <div className="flex flex-col gap-5">
         {posts.map(({ slug, meta, Thumb }) => (
           <Link key={slug} href={`/blog/${slug}`} className="group">
-            <Panel className="flex flex-row items-start overflow-hidden transition-colors group-hover:bg-black/50">
-              <div className="relative aspect-square w-32 shrink-0 self-start overflow-hidden border-r border-white/10 bg-gradient-to-br from-white/10 to-transparent sm:w-40">
+            <Panel className="flex flex-row overflow-hidden transition-colors group-hover:bg-black/50">
+              <div className="relative w-32 shrink-0 overflow-hidden border-r border-white/10 bg-gradient-to-br from-white/10 to-transparent sm:w-40">
                 {Thumb && <Thumb />}
               </div>
               <div className="min-w-0 flex-1 p-6">

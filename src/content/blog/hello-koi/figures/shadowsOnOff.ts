@@ -6,10 +6,7 @@ import {
   SHADOW_BIAS,
   SHADOW_DARKNESS,
   SHADOW_FADE,
-  SHADOW_K,
   WATER_H,
-  shadowMargin,
-  shadowSunDir,
 } from "@/render/ShadowRenderer";
 import {
   bindNoiseUniform,
@@ -19,6 +16,7 @@ import {
 import { LilyLotusFigureScene } from "@/figures/lilyLotusFigureScene";
 import { WiperState } from "@/figures/wiper";
 import { PALETTE as P } from "@/figures/palette";
+import { applyFigureShadowUniforms, figureShadowScale } from "./shadowHelpers";
 import VS from "@/render/shaders/water.vert.glsl";
 import FS from "./shaders/shadowsOnOff.frag.glsl";
 
@@ -49,6 +47,7 @@ class ShadowsOnOffSketch implements Sketch {
     sunDir: WebGLUniformLocation;
     shadowMargin: WebGLUniformLocation;
     shadowK: WebGLUniformLocation;
+    shadowWavyPx: WebGLUniformLocation;
     shadowDark: WebGLUniformLocation;
     shadowBias: WebGLUniformLocation;
     shadowFade: WebGLUniformLocation;
@@ -62,6 +61,10 @@ class ShadowsOnOffSketch implements Sketch {
 
   private w = 0;
   private h = 0;
+  // Unclamped scene ratio (= w / 1440) for shadow uniforms — keeps the
+  // shadow at a constant fraction of the figure canvas, matching production
+  // at its reference width.
+  private shadowScale = 1;
   private time = 0;
   private wiper = new WiperState();
 
@@ -89,6 +92,7 @@ class ShadowsOnOffSketch implements Sketch {
       sunDir: u("u_sunDir"),
       shadowMargin: u("u_shadowMargin"),
       shadowK: u("u_shadowK"),
+      shadowWavyPx: u("u_shadowWavyPx"),
       shadowDark: u("u_shadowDark"),
       shadowBias: u("u_shadowBias"),
       shadowFade: u("u_shadowFade"),
@@ -112,17 +116,18 @@ class ShadowsOnOffSketch implements Sketch {
     this.scene.setTheme(theme);
   }
 
-  resize(w: number, h: number, dpr: number) {
+  resize(w: number, h: number, dpr: number, screenScale: number) {
     this.w = w;
     this.h = h;
+    this.shadowScale = figureShadowScale(w);
     if (w === 0 || h === 0) return;
-    this.scene.resize(w, h);
+    this.scene.resize(w, h, screenScale);
     const px = Math.max(1, Math.round(w * dpr));
     const py = Math.max(1, Math.round(h * dpr));
     this.sceneFbo.resize(px, py);
-    // ShadowRenderer auto-pads by shadowMargin() so the cast pass never
-    // clamps — same convention the production pond uses.
-    this.shadow.resize(px, py, dpr);
+    // ShadowRenderer's FBO margin must match the scale used by the cast pass
+    // and the receiver shader, otherwise the texture remap walks off-pixel.
+    this.shadow.resize(px, py, dpr, this.shadowScale);
   }
 
   pointer(p: PointerInfo) {
@@ -141,7 +146,7 @@ class ShadowsOnOffSketch implements Sketch {
 
     // 1) Caster pass: bake lily + lotus heights into the shadow mask.
     this.shadow.begin();
-    this.scene.castShadows();
+    this.scene.castShadows(this.shadowScale);
     this.shadow.end();
 
     // 2) Visible pass: lily + lotus on transparent bg into the offscreen FBO.
@@ -183,13 +188,12 @@ class ShadowsOnOffSketch implements Sketch {
     gl.uniform1fv(this.u.seed, this.scene.seedBuf);
     gl.uniform3f(this.u.handleDot, P.accentGL[0], P.accentGL[1], P.accentGL[2]);
 
-    // Shadow uniforms — identical to WaterRenderer.composite() so the
-    // figure's heightmap sampling matches production frame-for-frame.
-    const sd = shadowSunDir(themeMix);
-    gl.uniform2f(this.u.sunDir, sd[0], sd[1]);
-    const [mx, my] = shadowMargin();
-    gl.uniform2f(this.u.shadowMargin, mx, my);
-    gl.uniform1f(this.u.shadowK, SHADOW_K);
+    // Shadow uniforms — sun direction / margin / K / wavy gain all scale by
+    // the SAME `shadowScale` used by ShadowRenderer.resize and the cast pass,
+    // so net shadow displacement (rawK*casterH - rawK*recvH, both scaled) is
+    // proportional to the canvas. Bias / fade / darkness / heights are
+    // dimensionless and shared with production.
+    applyFigureShadowUniforms(gl, this.u, this.shadowScale, themeMix);
     gl.uniform1f(this.u.shadowDark, SHADOW_DARKNESS);
     gl.uniform1f(this.u.shadowBias, SHADOW_BIAS);
     gl.uniform1f(this.u.shadowFade, SHADOW_FADE);

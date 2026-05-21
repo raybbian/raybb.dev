@@ -9,7 +9,6 @@ import { FiguresProvider } from "./figures/registry";
 import CodeSnippet from "@/components/CodeSnippet";
 import noiseSrc from "./figures/shaders/noise.glsl";
 import patternFragSrc from "./figures/shaders/pattern.frag.glsl";
-import instancingScreenshot from "./figures/instancing.png";
 
 <FiguresProvider>
 
@@ -166,6 +165,12 @@ Lotuses are made using a series of triangle-ellipse love children. Vertex positi
 />
 
 These rounded triangles are then layered on each other in rings towards the center, ensuring that any gaps are covered.
+
+<Figure
+  id="lotus-single"
+  aspect={2.4}
+  caption="A single lotus, assembled from three rings of rounded-triangle petals."
+/>
 
 ### Instancing
 

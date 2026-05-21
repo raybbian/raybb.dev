@@ -72,6 +72,7 @@ class UVMappingSketch implements Sketch {
   private w = 0;
   private h = 0;
   private dpr = 1;
+  private panelScale = 1;
   private worldW = 0;
   private worldH = 0;
   private fish: Fish | null = null;
@@ -103,7 +104,11 @@ class UVMappingSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number, dpr: number) {
+  // Two-panel figure: the fish lives in a half-width column; its scale is
+  // derived from `lw` (panel width) using `figureScreenScale` locally. The
+  // host-supplied `screenScale` is unused here because the figure has no
+  // canvas-width-relative text or full-canvas geometry.
+  resize(w: number, h: number, dpr: number, _screenScale: number) {
     this.w = w;
     this.h = h;
     this.dpr = dpr;
@@ -115,6 +120,7 @@ class UVMappingSketch implements Sketch {
     this.worldW = lw * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
     const screenScale = figureScreenScale(lw);
+    this.panelScale = screenScale;
     const scale = FIGURE_FISH_SCALE * screenScale;
     this.fish = createFigureFish({
       origin: { x: this.worldW / 2, y: this.worldH / 2 },
@@ -168,7 +174,7 @@ class UVMappingSketch implements Sketch {
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.viewport(0, 0, vxLeftW, ph);
-    this.renderer.draw(geo, lw, h, 0);
+    this.renderer.draw(geo, lw, h, 0, 0, 0, 0, this.panelScale);
 
     gl.viewport(vxLeftW, 0, vxRightW, ph);
     this.patBaker.use();

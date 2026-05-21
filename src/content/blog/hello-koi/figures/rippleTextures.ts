@@ -9,7 +9,6 @@ import {
 import { ThemeMixer, lerpRgb } from "@/figures/theme";
 import { LILYPAD_INST_FLOATS } from "@/sim/Lilypads";
 import { BG_DARK, BG_LIGHT } from "@/render/frame";
-import { figureScreenScale } from "@/figures/scale";
 import { FullscreenShader } from "@/figures/FullscreenShader";
 import { PALETTE as P } from "@/figures/palette";
 import RIPPLE_VS from "@/render/shaders/ripple.vert.glsl";
@@ -83,6 +82,7 @@ class RippleTexturesSketch implements Sketch {
 
   private w = 0;
   private h = 0;
+  private screenScale = 1;
   private fboW = 0;
   private fboH = 0;
   private lilyR = 0;
@@ -167,9 +167,10 @@ class RippleTexturesSketch implements Sketch {
     this.theme.setTarget(theme);
   }
 
-  resize(w: number, h: number, dpr: number) {
+  resize(w: number, h: number, dpr: number, screenScale: number) {
     this.w = w;
     this.h = h;
+    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
     const fboW = Math.max(1, Math.round(w * dpr));
     const fboH = Math.max(1, Math.round(h * dpr));
@@ -282,7 +283,7 @@ class RippleTexturesSketch implements Sketch {
     if (w === 0 || h === 0) return;
     if (this.theme.advance(dt)) this.lily.setTheme(this.theme.mix);
     const bg = lerpRgb(BG_DARK, BG_LIGHT, this.theme.mix);
-    const screenScale = figureScreenScale(w);
+    const screenScale = this.screenScale;
 
     const vpSave = gl.getParameter(gl.VIEWPORT) as Int32Array;
 

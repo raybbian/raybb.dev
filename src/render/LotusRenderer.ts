@@ -124,24 +124,32 @@ export class LotusRenderer {
 
   // Caster pass: real petal shape into the bound height mask. No-blend /
   // no-depth state is set by ShadowRenderer.begin().
+  // `shadowScale` (default 1) — see LilypadRenderer.cast for the contract.
   cast(
     data: Float32Array,
     count: number,
     width: number,
     height: number,
     scroll: number,
+    shadowScale: number = 1,
   ) {
     if (count === 0) return;
     const gl = this.gl;
     this.upload(data, count);
     gl.useProgram(this.castProg);
-    const [mx, my] = shadowMargin();
+    const [mxRaw, myRaw] = shadowMargin();
+    const mx = mxRaw * shadowScale;
+    const my = myRaw * shadowScale;
     gl.uniform2f(this.castResLoc, width + 2 * mx, height + my);
     gl.uniform1f(this.castScrollLoc, scroll);
     gl.uniform1f(this.castHeightLoc, LOTUS_H);
     const off = castShadowOffset(LOTUS_H, this.themeMix);
     // +mx folds in the X origin shift (mask grown both sides for the mirrored sun).
-    gl.uniform2f(this.castOffsetLoc, off[0] + mx, off[1]);
+    gl.uniform2f(
+      this.castOffsetLoc,
+      off[0] * shadowScale + mx,
+      off[1] * shadowScale,
+    );
     gl.bindVertexArray(this.castVao);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, this.quadCount, count);
     gl.bindVertexArray(null);

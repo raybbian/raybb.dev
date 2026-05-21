@@ -145,16 +145,20 @@ float shadowHitWavyAuto(vec2 uv, float time, float pxGain) {
 // Submergence-scaled wrapper for underwater receivers: a deeper fish (`depth`
 // = submergence, 0..1) sits under a taller, wavier water column, so its cast
 // shadow churns harder. Single source for the px magnitude + depth ramp so
-// fish.frag/ellipse.frag carry no mirrored tuning.
-const float SHADOW_WAVY_PX = 30.0;     // base churn (shallow fish)
+// fish.frag/ellipse.frag carry no mirrored tuning. `scale` is the same
+// `screenScale` (1 at viewport width 1440) the water/ripple shaders carry,
+// threaded in so the wobble amplitude tracks canvas width instead of
+// staying locked at 30 logical px regardless of how zoomed the user is.
+const float SHADOW_WAVY_PX = 30.0;     // base churn (shallow fish) at scale=1
 const float SHADOW_WAVY_DEPTH = 2.0;   // extra churn per unit submergence
 
-float shadowWavyGain(float depth) {
-  return SHADOW_WAVY_PX * (1.0 + SHADOW_WAVY_DEPTH * clamp(depth, 0.0, 1.0));
+float shadowWavyGain(float depth, float scale) {
+  return SHADOW_WAVY_PX * scale
+       * (1.0 + SHADOW_WAVY_DEPTH * clamp(depth, 0.0, 1.0));
 }
 
-float shadowHitWavyDepth(vec2 uv, float time, float depth) {
-  return shadowHitWavyAuto(uv, time, shadowWavyGain(depth));
+float shadowHitWavyDepth(vec2 uv, float time, float depth, float scale) {
+  return shadowHitWavyAuto(uv, time, shadowWavyGain(depth, scale));
 }
 
 // DEBUG ONLY. Mirrors shadowHit: R=present, G=atten, B=final hit. With the
@@ -175,6 +179,6 @@ vec3 shadowDebugRGB(vec2 uv) {
 // DEBUG ONLY. Same breakdown as shadowDebugRGB but at the perturbed coord, so
 // the overlay matches what shadowHitWavyDepth actually draws on the fish.
 // Reuses both the shared perturbation and the base debug -> no mirrored math.
-vec3 shadowDebugWavyDepth(vec2 uv, float time, float depth) {
-  return shadowDebugRGB(shadowWavyUV(uv, time, shadowWavyGain(depth)));
+vec3 shadowDebugWavyDepth(vec2 uv, float time, float depth, float scale) {
+  return shadowDebugRGB(shadowWavyUV(uv, time, shadowWavyGain(depth, scale)));
 }

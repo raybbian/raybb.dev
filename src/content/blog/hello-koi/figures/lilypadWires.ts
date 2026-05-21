@@ -18,7 +18,11 @@ class LilypadWiresSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  // Lilypad fits the panel as a fraction of the canvas (Math.min(w,h) * 0.42),
+  // so its geometry already scales with the figure box. The wireframe stroke
+  // is rendered via LilypadRenderer's own shader and isn't a scene px literal
+  // here, so `screenScale` is accepted for the Sketch contract but unused.
+  resize(w: number, h: number, _dpr: number, _screenScale: number) {
     this.w = w;
     this.h = h;
     const d = this.data;

@@ -70,7 +70,10 @@ class RibbonSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  // Static figure: the fish is built once and fit into the canvas with an
+  // internal transform (see `buildAndFit`), so there are no scene-px literals
+  // to scale here. `screenScale` is accepted for the Sketch contract.
+  resize(w: number, h: number, _dpr: number, _screenScale: number) {
     this.w = w;
     this.h = h;
     this.geo = null;

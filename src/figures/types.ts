@@ -13,7 +13,21 @@ export interface PointerInfo {
 }
 
 export interface Sketch {
-  resize(width: number, height: number, dpr: number): void;
+  // `screenScale` is figureScreenScale(width) computed by the host. Every
+  // scene-rendering pixel literal (text, stroke widths on rendered scene
+  // geometry, shadow offsets / margin / wavy gain) MUST go through
+  // `figurePx` / `figureFont` from `@/figures/scale` (or, for shadow uniforms,
+  // the post-local shadow helpers — see `shadowHelpers.ts` under
+  // `src/content/blog/hello-koi/figures/`). UI affordances — slider
+  // knobs/tracks, divider widths, draggable grabber radii, arrow heads,
+  // hit-test tolerances — stay at constant logical px so touch targets remain
+  // usable at every viewport.
+  resize(
+    width: number,
+    height: number,
+    dpr: number,
+    screenScale: number,
+  ): void;
   frame(t: number, dt: number): void;
   setTheme(theme: FigureTheme): void;
   pointer?(p: PointerInfo): void;

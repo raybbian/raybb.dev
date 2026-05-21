@@ -59,7 +59,9 @@ class KoiPatternSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number) {
+  // Fullscreen shader: the koi-pattern shader is dimensionless, sampled across
+  // the panel via UV; no scene-px literals to scale.
+  resize(w: number, h: number, _dpr: number, _screenScale: number) {
     if (h > 0) this.uRange = (PAT_V_RANGE * (w / h)) / SHADER_ASPECT;
   }
 

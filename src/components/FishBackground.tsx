@@ -511,6 +511,7 @@ export default function FishBackground() {
           palette,
           worldY,
           now / 1000,
+          screenScale,
         );
       }
 
