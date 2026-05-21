@@ -404,6 +404,7 @@ export class Fish {
     height: number,
     worldY: number,
   ): void {
+    if (dt <= 0) return;
     this.t += dt;
     if (this.satedTimer > 0) this.satedTimer -= dt;
     const f = dt * TICK_FPS;
