@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { profile } from "@/content/profile";
 
 export default function Hero() {
@@ -23,9 +24,16 @@ export default function Hero() {
       >
         {profile.subtitle}
       </p>
+      <Link
+        href="/blog"
+        className="hero-word accent ink-shadow mt-8 inline-block rounded-lg border border-white/20 px-5 py-2 text-base font-semibold transition-colors hover:bg-white/10 sm:text-lg"
+        style={{ animationDelay: "460ms" }}
+      >
+        Go to blog →
+      </Link>
       <span
         className="hero-word ink-3 mt-12 text-sm uppercase tracking-widest"
-        style={{ animationDelay: "560ms" }}
+        style={{ animationDelay: "660ms" }}
       >
         Scroll ↓
       </span>

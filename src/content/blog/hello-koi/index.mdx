@@ -202,7 +202,7 @@ As all of the objects that sit on the water should produce roughly circular ripp
 <Figure
   id="ripple-textures"
   aspect={2.4}
-  caption="Left (foam mask) uses a max blend, so overlapping rings cap at the brighter contribution. Right (displacement) uses additive blending, so ripples stack together. Drag horizontally to change the spacing."
+  caption="Left (foam mask) uses a max blend, so overlapping rings cap at the brighter contribution. Right (displacement) uses additive blending, so ripples stack together. Drag horizontally to change spacing."
 />
 
 Then, we reference these two textures while rendering the water, using the intensity texture to determine the color, and the displacement texture to determine the refraction offset (more on this later).
@@ -244,7 +244,7 @@ Despite all of this, our scene is still looking rather flat. That's because it i
 <Figure
   id="shadows-on-off"
   aspect={2.4}
-  caption="Drag to turn shadows on and off!"
+  caption="Drag the handle: shadows on on the right."
 />
 
 Once again, we are going to use certain properties of our use case in order to come up with a solution that is efficient, but still provides the results that we want. We can see that we only have one single light in the scene: the sun. The sun (being the sun) is very far away, which means that shadows will remain the same size as the object that casts them, and shadows will always be cast in the same angle.
@@ -256,10 +256,10 @@ We start by rendering a _heightmap_, which effectively sits at the bottom of our
 <Figure
   id="heightmap-diagram"
   aspect={2.4}
-  caption="Left: the pond floor stores each caster's height where its shadow lands. Right: to shadow a fragment, the shader walks down-sun and reads the texel — `h = 1.0` tells it a lotus sits above."
+  caption="Left: the pond floor stores each caster's height where its shadow lands. Right: to shadow a fragment, the shader walks down-sun and reads the texel"
 />
 
-If that value is greater than our current height value, then we darken the current pixel relative to the distance between them. To make these shadows seem less like cutouts, we also add displacement to the shadow if it passes through the water surface. Voila! Shadows that make our scene much less flatter.
+If that value is greater than our current height value, then we darken the current pixel relative to the distance between them. To make these shadows seem less like cutouts, we also add displacement to the shadow if it passes through the water surface. Voila! Shadows that make our scene much less flat.
 
 ## Final Optimizations
 
@@ -267,7 +267,7 @@ I won't dive too deep, but several optimizations can still be made here. These i
 - Decreasing the render resolution if a device can not render the scene at 60fps.
 - Reducing the number of allocations and inlining some function calls to reduce lag spikes from garbage collection.
 
-In general, you should always _profile_ your code when deciding what to optimize next. Rewriting your codebase in Rust doesn't do anything if you are rendering a terribly optimized shader, for example. You can press `p` to see more information about how long each part of the scene takes to render!<Footnote>Support varies across browsers. You may need to enable WebGL2 developer extensions on Chromium-based browsers, for example.</Footnote>
+In general, you should always _profile_ your code when deciding what to optimize next. Eliminating one memory allocation doesn't do anything if you are rendering a terribly optimized shader, for example. You can press `p` to see more information about how long each part of the scene takes to render!<Footnote>Support varies across browsers. You may need to enable WebGL2 developer extensions on Chromium-based browsers, for example.</Footnote>
 
 ## Conclusion
 

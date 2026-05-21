@@ -280,22 +280,6 @@ function drawRightArrow(ctx: CanvasRenderingContext2D, x0: number, L: Layout) {
   ctx.restore();
 }
 
-function drawCaptionLabel(
-  ctx: CanvasRenderingContext2D,
-  x0: number,
-  _panelW: number,
-  panelH: number,
-  label: string,
-) {
-  ctx.save();
-  ctx.fillStyle = P.hint;
-  ctx.font = P.font;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(label, x0 + PANEL_INSET, panelH - 8);
-  ctx.restore();
-}
-
 class HeightmapDiagramSketch implements Sketch {
   animated = false;
   private ctx: CanvasRenderingContext2D;
@@ -334,13 +318,6 @@ class HeightmapDiagramSketch implements Sketch {
     drawHeightmapCells(ctx, 0, layout, true);
     drawCasters(ctx, 0, layout, 1, 1, true);
     drawSunIndicator(ctx, 0);
-    drawCaptionLabel(
-      ctx,
-      0,
-      layout.panelW,
-      h,
-      "each caster writes its height to its own floor texel; tallest wins",
-    );
 
     // Right panel: same heightmap (still opaque). The shader walks down-sun
     // from a sample pixel on the (opaque) square; the circle's shadow lands
@@ -351,13 +328,6 @@ class HeightmapDiagramSketch implements Sketch {
     drawCircleShadowOnSquare(ctx, layout.panelW, layout);
     drawRightArrow(ctx, layout.panelW, layout);
     drawSunIndicator(ctx, layout.panelW);
-    drawCaptionLabel(
-      ctx,
-      layout.panelW,
-      layout.panelW,
-      h,
-      "shader walks down-sun and reads the texel",
-    );
 
     drawVerticalDivider(ctx, layout.panelW, h, P.divider);
   }

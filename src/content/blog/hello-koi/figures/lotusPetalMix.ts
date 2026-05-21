@@ -1,4 +1,4 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
 import { LotusRenderer } from "@/render/LotusRenderer";
 import { LOTUS_INST_FLOATS } from "@/sim/Lotuses";
 import { createProgram } from "@/lib/gl";
@@ -60,9 +60,10 @@ class LotusPetalMixSketch implements Sketch {
   private w = 0;
   private h = 0;
 
-  constructor(gl: WebGL2RenderingContext) {
+  constructor(gl: WebGL2RenderingContext, theme: FigureTheme) {
     this.gl = gl;
     this.renderer = new LotusRenderer(gl);
+    this.renderer.setTheme(theme === "light" ? 1 : 0);
     this.rectProg = createProgram(gl, RECT_VS, RECT_FS);
     this.rectResLoc = gl.getUniformLocation(this.rectProg, "u_res")!;
     this.rectMinLoc = gl.getUniformLocation(this.rectProg, "u_rectPxMin")!;
@@ -73,7 +74,7 @@ class LotusPetalMixSketch implements Sketch {
     this.slider = new SliderUI({ knobRadius: KNOB_RADIUS, initial: 0.55 });
   }
 
-  setTheme(theme: "light" | "dark") {
+  setTheme(theme: FigureTheme) {
     this.renderer.setTheme(theme === "light" ? 1 : 0);
   }
 
@@ -161,9 +162,9 @@ class LotusPetalMixSketch implements Sketch {
 const mod: FigureModule = {
   kind: "webgl2",
   aspect: 2.4,
-  create(host) {
+  create(host, theme) {
     if (host.kind !== "webgl2") throw new Error("expected webgl2 host");
-    return new LotusPetalMixSketch(host.gl);
+    return new LotusPetalMixSketch(host.gl, theme);
   },
 };
 

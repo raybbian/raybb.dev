@@ -34,10 +34,16 @@ const RECT_U_MAX = 0.62;
 const RECT_V_MIN = 0.18;
 const RECT_V_MAX = 0.82;
 
+// V_RANGE is fixed; U_RANGE is derived per-resize from the live right-panel
+// aspect (panel width = w/2, height = h) so the pattern is rendered at proper
+// cover aspect instead of being stretched. The shader bakes a 3× horizontal
+// multiplier into st.x (see noise.glsl ASPECT), so feeding equal U/V ranges
+// into a wide panel would compress the field horizontally. Derivation:
+// u_range * ASPECT / panel_w == v_range / panel_h.
 const PAT_U_CENTER = 0.5;
 const PAT_V_CENTER = 0.5;
-const PAT_U_RANGE = 1.4;
 const PAT_V_RANGE = 2.6;
+const SHADER_ASPECT = 3.0;
 
 function uvToPatternPx(
   u: number,
@@ -45,9 +51,10 @@ function uvToPatternPx(
   x0: number,
   pw: number,
   ph: number,
+  uRange: number,
 ): Vec2 {
   return {
-    x: x0 + ((u - PAT_U_CENTER) / PAT_U_RANGE + 0.5) * pw,
+    x: x0 + ((u - PAT_U_CENTER) / uRange + 0.5) * pw,
     y: ((v - PAT_V_CENTER) / PAT_V_RANGE + 0.5) * ph,
   };
 }
@@ -70,6 +77,7 @@ class UVMappingSketch implements Sketch {
   private fish: Fish | null = null;
   private lastT: number | null = null;
   private camera = new SmoothFollowCamera();
+  private patURange = PAT_V_RANGE / SHADER_ASPECT;
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
@@ -103,6 +111,7 @@ class UVMappingSketch implements Sketch {
     this.glCanvas.width = Math.max(1, Math.ceil(w * dpr));
     this.glCanvas.height = Math.max(1, Math.ceil(h * dpr));
     const lw = w / 2;
+    this.patURange = (PAT_V_RANGE * (lw / h)) / SHADER_ASPECT;
     this.worldW = lw * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
     const screenScale = figureScreenScale(lw);
@@ -167,7 +176,7 @@ class UVMappingSketch implements Sketch {
     if (this.patUvCenter)
       gl.uniform2f(this.patUvCenter, PAT_U_CENTER, PAT_V_CENTER);
     if (this.patUvRange)
-      gl.uniform2f(this.patUvRange, PAT_U_RANGE, PAT_V_RANGE);
+      gl.uniform2f(this.patUvRange, this.patURange, PAT_V_RANGE);
     this.patBaker.bake();
 
     // --- 2D canvas composite + overlays ---
@@ -280,11 +289,11 @@ class UVMappingSketch implements Sketch {
   }
 
   private drawPatternRect(rx0: number, rw: number, h: number) {
-    const { ctx } = this;
-    const tl = uvToPatternPx(RECT_U_MIN, RECT_V_MIN, rx0, rw, h);
-    const tr = uvToPatternPx(RECT_U_MAX, RECT_V_MIN, rx0, rw, h);
-    const br = uvToPatternPx(RECT_U_MAX, RECT_V_MAX, rx0, rw, h);
-    const bl = uvToPatternPx(RECT_U_MIN, RECT_V_MAX, rx0, rw, h);
+    const { ctx, patURange: u } = this;
+    const tl = uvToPatternPx(RECT_U_MIN, RECT_V_MIN, rx0, rw, h, u);
+    const tr = uvToPatternPx(RECT_U_MAX, RECT_V_MIN, rx0, rw, h, u);
+    const br = uvToPatternPx(RECT_U_MAX, RECT_V_MAX, rx0, rw, h, u);
+    const bl = uvToPatternPx(RECT_U_MIN, RECT_V_MAX, rx0, rw, h, u);
     ctx.save();
     ctx.strokeStyle = P.accent;
     ctx.lineWidth = 2;
@@ -319,7 +328,7 @@ class UVMappingSketch implements Sketch {
     ctx.setLineDash([3, 4]);
     for (let i = 0; i < 4; i++) {
       const fp = this.posAt(geo, corners[i]);
-      const pp = uvToPatternPx(uvs[i][0], uvs[i][1], rx0, rw, h);
+      const pp = uvToPatternPx(uvs[i][0], uvs[i][1], rx0, rw, h, this.patURange);
       ctx.beginPath();
       ctx.moveTo(fp.x, fp.y);
       ctx.lineTo(pp.x, pp.y);

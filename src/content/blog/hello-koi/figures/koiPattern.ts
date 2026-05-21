@@ -5,12 +5,15 @@ import { FullscreenShader } from "@/figures/FullscreenShader";
 import FS from "./shaders/koiPattern.frag.glsl";
 
 // Body-UV window shown across the panel. Centered on the body UV mid-point
-// (0.5, 0.5) and sized so a 2.4-aspect panel shows roughly the same blob
-// density a fish carries head-to-tail in the other figures.
+// (0.5, 0.5). V_RANGE is fixed; U_RANGE is derived per-frame from the live
+// panel aspect so the noise stays isotropic (no horizontal stretch) at any
+// canvas size — the shader bakes a 3× horizontal multiplier into st.x (see
+// noise.glsl ASPECT), so feeding equal U/V ranges into a square would squash
+// the field 3×. Derivation: u_range.x * ASPECT / w == v_range / h.
 const PAT_U_CENTER = 0.5;
 const PAT_V_CENTER = 0.5;
-const PAT_U_RANGE = 2.6;
 const PAT_V_RANGE = 3.0;
+const SHADER_ASPECT = 3.0;
 
 class KoiPatternSketch implements Sketch {
   animated = false;
@@ -41,6 +44,7 @@ class KoiPatternSketch implements Sketch {
   ];
   private seed: [number, number] = [DEFAULT_KOI_COLORS.seed[0], DEFAULT_KOI_COLORS.seed[1]];
   private seedNum = 0;
+  private uRange = PAT_V_RANGE / SHADER_ASPECT;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -55,7 +59,9 @@ class KoiPatternSketch implements Sketch {
 
   setTheme() {}
 
-  resize() {}
+  resize(w: number, h: number) {
+    if (h > 0) this.uRange = (PAT_V_RANGE * (w / h)) / SHADER_ASPECT;
+  }
 
   pointer(p: PointerInfo) {
     if (p.type !== "up") return;
@@ -77,7 +83,7 @@ class KoiPatternSketch implements Sketch {
       if (this.uAccent) gl.uniform3fv(this.uAccent, this.accent);
       if (this.uSeed) gl.uniform2fv(this.uSeed, this.seed);
       if (this.uUvCenter) gl.uniform2f(this.uUvCenter, PAT_U_CENTER, PAT_V_CENTER);
-      if (this.uUvRange) gl.uniform2f(this.uUvRange, PAT_U_RANGE, PAT_V_RANGE);
+      if (this.uUvRange) gl.uniform2f(this.uUvRange, this.uRange, PAT_V_RANGE);
     });
   }
 
