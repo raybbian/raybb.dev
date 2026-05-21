@@ -20,7 +20,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const meta = getPost(slug)?.meta;
   if (!meta) return {};
-  const thumb = `/thumbnails/${slug}.png`;
+  const ogImage = "/og.png";
   const url = `/blog/${slug}`;
   return {
     title: meta.title,
@@ -31,13 +31,13 @@ export async function generateMetadata({
       description: meta.description,
       url,
       publishedTime: meta.date,
-      images: [{ url: thumb, width: 1200, height: 630 }],
+      images: [{ url: ogImage, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
       title: meta.title,
       description: meta.description,
-      images: [thumb],
+      images: [ogImage],
     },
   };
 }

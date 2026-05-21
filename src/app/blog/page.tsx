@@ -7,7 +7,7 @@ import { readingTimeMinutes } from "@/content/blog/readingTime";
 
 const blogDescription =
   "Writing on anything I find interesting enough to share.";
-const blogThumb = `/thumbnails/${posts[0].slug}.png`;
+const OG_IMAGE = "/og.png";
 
 export const metadata: Metadata = {
   title: "Blog",
@@ -17,13 +17,13 @@ export const metadata: Metadata = {
     title: "Blog",
     description: blogDescription,
     url: "/blog",
-    images: [{ url: blogThumb, width: 1200, height: 630 }],
+    images: [{ url: OG_IMAGE, width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Blog",
     description: blogDescription,
-    images: [blogThumb],
+    images: [OG_IMAGE],
   },
 };
 

@@ -6,7 +6,6 @@ import NavDrawer from "@/components/NavDrawer";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Analytics } from "@vercel/analytics/next";
 import Script from "next/script";
-import { posts } from "@/content/blog";
 
 // /public/theme-bootstrap.js sets `data-theme` before the body paints
 // (avoids a flash of the wrong theme). Loaded as an external file rather
@@ -23,7 +22,7 @@ const geistMono = Geist_Mono({
 });
 
 const SITE_URL = "https://raybb.dev";
-const fallbackThumb = `/thumbnails/${posts[0].slug}.png`;
+const OG_IMAGE = "/og.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -41,14 +40,14 @@ export const metadata: Metadata = {
     description: "Welcome to my personal website!",
     url: "/",
     locale: "en_US",
-    images: [{ url: fallbackThumb, width: 1200, height: 630 }],
+    images: [{ url: OG_IMAGE, width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Raymond Bian",
     description: "Welcome to my personal website!",
     creator: "Raymond Bian",
-    images: [fallbackThumb],
+    images: [OG_IMAGE],
   },
   icons: {
     icon: "/icon.png",
