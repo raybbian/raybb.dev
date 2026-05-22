@@ -1,29 +1,14 @@
 "use client";
 
-import {
-  Children,
-  cloneElement,
-  isValidElement,
-  ReactElement,
-  ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa6";
-
-// When looping, render the originals plus this many duplicate copies of the
-// full set on EACH side. The user starts centered in the middle (original)
-// copy; after any scroll settles, if they've drifted out of the middle copy
-// we silently set scrollLeft to the equivalent position inside it. The dup
-// content makes the teleport invisible.
-const DUPS_PER_SIDE = 2;
 
 type Props = {
   children: ReactNode;
   prevLabel: string;
   nextLabel: string;
-  // When true, the carousel scrolls endlessly via cloned items + teleport.
+  // When true, the side buttons wrap to the other end at the boundary
+  // instead of being hidden.
   loop?: boolean;
 };
 
@@ -37,58 +22,9 @@ export default function Carousel({
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
 
-  const childArr = Children.toArray(children).filter(isValidElement) as ReactElement[];
-  const N = childArr.length;
-  const copies = loop && N > 0 ? 1 + 2 * DUPS_PER_SIDE : 1;
-
-  const rendered: ReactNode =
-    copies === 1
-      ? children
-      : Array.from({ length: copies }).flatMap((_, c) =>
-          childArr.map((child, i) =>
-            cloneElement(child, {
-              key: `c${c}-${child.key ?? i}`,
-              // Dup copies are not focus/AT targets — only the middle copy is.
-              ...(c !== DUPS_PER_SIDE
-                ? { "aria-hidden": true, inert: true }
-                : {}),
-            }),
-          ),
-        );
-
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
-    // --- Loop measurements ---------------------------------------------------
-    // middleStartLeft: scrollLeft that aligns the middle copy's first child
-    //   to the snap line.
-    // setWidth: distance (in scrollLeft units) between consecutive copies'
-    //   first children — i.e. the width of one full set of cards + the gap
-    //   that separates it from the next set.
-    let middleStartLeft = 0;
-    let setWidth = 0;
-    const measure = () => {
-      if (!loop || N === 0) return;
-      const kids = el.children;
-      if (kids.length < (DUPS_PER_SIDE + 1) * N + 1) return;
-      const cs = getComputedStyle(el);
-      const padLeft =
-        parseFloat(cs.scrollPaddingLeft) || parseFloat(cs.paddingLeft) || 0;
-      // getBoundingClientRect-based, so we don't depend on offsetParent — the
-      // scroll container has no explicit position, so offsetLeft could be
-      // resolved against an arbitrary ancestor.
-      const containerLeft = el.getBoundingClientRect().left;
-      const sl = el.scrollLeft;
-      const middleFirst = kids[DUPS_PER_SIDE * N] as HTMLElement;
-      const nextSetFirst = kids[(DUPS_PER_SIDE + 1) * N] as HTMLElement;
-      const middlePos =
-        middleFirst.getBoundingClientRect().left - containerLeft + sl;
-      const nextPos =
-        nextSetFirst.getBoundingClientRect().left - containerLeft + sl;
-      middleStartLeft = middlePos - padLeft;
-      setWidth = nextPos - middlePos;
-    };
 
     const containerStart = () => {
       const cs = getComputedStyle(el);
@@ -122,17 +58,25 @@ export default function Carousel({
       });
     };
 
-    measure();
-    // Silently center the user in the middle (original) copy.
-    if (loop && setWidth > 0) el.scrollLeft = middleStartLeft;
+    // Stretch the trailing padding so the last item can scroll-snap to the
+    // left edge. Without this, max scrollLeft puts the last item at
+    // (clientWidth - rightPad - lastWidth) from the viewport left, which is
+    // greater than the snap line at leftPad — so it never snaps to start.
+    const updateEndPadding = () => {
+      const last = el.lastElementChild as HTMLElement | null;
+      if (!last) return;
+      const cs = getComputedStyle(el);
+      const leftPad = parseFloat(cs.paddingLeft) || 0;
+      const lastWidth = last.getBoundingClientRect().width;
+      const needed = Math.max(0, el.clientWidth - leftPad - lastWidth);
+      const next = `${needed}px`;
+      if (el.style.paddingInlineEnd !== next) el.style.paddingInlineEnd = next;
+    };
+    updateEndPadding();
+    const ro = new ResizeObserver(updateEndPadding);
+    ro.observe(el);
 
     const onScroll = () => {
-      if (loop) {
-        // Looping never "ends" — keep both arrows visible.
-        setAtStart(false);
-        setAtEnd(false);
-        return;
-      }
       const max = el.scrollWidth - el.clientWidth;
       setAtStart(el.scrollLeft <= 1);
       setAtEnd(el.scrollLeft >= max - 1);
@@ -235,68 +179,41 @@ export default function Carousel({
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
 
-    // --- Teleport: after scroll settles, snap silently back into the middle
-    // copy if we've drifted off it. The duplicated content makes the jump
-    // invisible. Programmatic scrollLeft writes can re-fire scrollend, so a
-    // `teleporting` flag prevents recursion.
-    let teleporting = false;
-    let idleTimer: number | null = null;
-    const maybeTeleport = () => {
-      if (!loop || teleporting || down || setWidth <= 0) return;
-      const delta = el.scrollLeft - middleStartLeft;
-      if (delta >= 0 && delta < setWidth) return;
-      const wrapped = ((delta % setWidth) + setWidth) % setWidth;
-      teleporting = true;
-      el.scrollLeft = middleStartLeft + wrapped;
-      requestAnimationFrame(() => {
-        teleporting = false;
-      });
-    };
-    const onScrollEnd = () => maybeTeleport();
-    // Fallback for browsers without scrollend (older desktop Safari): debounce
-    // the scroll event and treat 180ms of quiet as "settled".
-    const onScrollIdle = () => {
-      if (idleTimer) window.clearTimeout(idleTimer);
-      idleTimer = window.setTimeout(maybeTeleport, 180);
-    };
-    el.addEventListener("scrollend", onScrollEnd);
-    el.addEventListener("scroll", onScrollIdle, { passive: true });
-
-    // Re-measure + re-anchor on container resize.
-    const ro = new ResizeObserver(() => {
-      if (!loop) return;
-      const prevDelta = el.scrollLeft - middleStartLeft;
-      measure();
-      if (setWidth > 0) {
-        const wrapped = ((prevDelta % setWidth) + setWidth) % setWidth;
-        teleporting = true;
-        el.scrollLeft = middleStartLeft + wrapped;
-        requestAnimationFrame(() => {
-          teleporting = false;
-        });
-      }
-    });
-    ro.observe(el);
+    // Block native drag-and-drop on descendant <a>/<img>: without this,
+    // mouse-dragging a card initiates a link/image drag (browser shows the
+    // URL ghost) instead of our scroll-drag.
+    const onDragStart = (e: DragEvent) => e.preventDefault();
+    el.addEventListener("dragstart", onDragStart);
 
     return () => {
-      if (idleTimer) window.clearTimeout(idleTimer);
+      ro.disconnect();
       el.removeEventListener("scroll", onScroll);
-      el.removeEventListener("scroll", onScrollIdle);
-      el.removeEventListener("scrollend", onScrollEnd);
       el.removeEventListener("pointerdown", onDown);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
-      ro.disconnect();
+      el.removeEventListener("dragstart", onDragStart);
       el.style.scrollSnapType = "";
+      el.style.paddingInlineEnd = "";
     };
-  }, [loop, N]);
+  }, []);
 
-  // Side buttons for anyone who can't scroll horizontally. With `loop`, the
-  // teleport effect wraps around behind the scenes; nudge just scrollBys.
+  // Side buttons. With `loop`, reaching either end wraps to the opposite end
+  // (smooth-scrolled). Otherwise the boundary button is hidden via opacity.
   const nudge = (dir: 1 | -1) => {
     const el = ref.current;
     if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    if (loop) {
+      if (dir === 1 && el.scrollLeft >= max - 1) {
+        el.scrollTo({ left: 0, behavior: "smooth" });
+        return;
+      }
+      if (dir === -1 && el.scrollLeft <= 1) {
+        el.scrollTo({ left: max, behavior: "smooth" });
+        return;
+      }
+    }
     const first = el.firstElementChild as HTMLElement | null;
     const step = first ? first.getBoundingClientRect().width + 20 : 320;
     el.scrollBy({ left: dir * step, behavior: "smooth" });
@@ -344,7 +261,7 @@ export default function Carousel({
             "max(1.5rem, calc((100vw - 48rem) / 2 + 1.5rem))",
         }}
       >
-        {rendered}
+        {children}
       </div>
     </div>
   );
