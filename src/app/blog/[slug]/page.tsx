@@ -20,7 +20,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const meta = getPost(slug)?.meta;
   if (!meta) return {};
-  const ogImage = "/og.png";
+  const ogImage = `/thumbnails/${slug}.png`;
   const url = `/blog/${slug}`;
   return {
     title: meta.title,
