@@ -146,7 +146,7 @@ float shadowHitWavyAuto(vec2 uv, float time, float pxGain) {
 // = submergence, 0..1) sits under a taller, wavier water column, so its cast
 // shadow churns harder. Single source for the px magnitude + depth ramp so
 // fish.frag/ellipse.frag carry no mirrored tuning. `scale` is the same
-// `screenScale` (1 at viewport width 1440) the water/ripple shaders carry,
+// `worldScale` (1 at width 1440) the water/ripple shaders carry,
 // threaded in so the wobble amplitude tracks canvas width instead of
 // staying locked at 30 logical px regardless of how zoomed the user is.
 const float SHADOW_WAVY_PX = 30.0;     // base churn (shallow fish) at scale=1

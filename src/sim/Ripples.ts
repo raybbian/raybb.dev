@@ -20,8 +20,8 @@ export class Ripples {
   private rings: Ring[] = [];
   private spread: number;
 
-  constructor(screenScale = 1) {
-    this.spread = RIPPLE_SPREAD * screenScale;
+  constructor(worldScale = 1) {
+    this.spread = RIPPLE_SPREAD * worldScale;
   }
 
   spawn(x: number, y: number, baseR: number): void {

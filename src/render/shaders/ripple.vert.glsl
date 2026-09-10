@@ -9,7 +9,7 @@ layout(location = 0) in vec2 a_unit;   // unit quad in [-1, 1]^2
 layout(location = 1) in vec4 i_a;      // (cx, cy, radius, rot) in logical px / rad
 layout(location = 2) in vec4 i_b;      // (notch, amp, foam, seed)
 uniform vec2 u_res;        // logical px
-uniform float u_scale;     // screenScale: px constants follow it
+uniform float u_scale;     // worldScale: px constants follow it
 out vec2 v_local;          // world-px offset from ripple center
 flat out vec4 v_a;
 flat out vec4 v_b;

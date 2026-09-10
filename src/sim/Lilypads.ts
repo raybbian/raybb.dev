@@ -82,7 +82,7 @@ function placeBandPads(
   width: number,
   bandTop: number,
   bandH: number,
-  screenScale: number,
+  worldScale: number,
 ): Pad[] {
   const pads: Pad[] = [];
   const lerp = (lo: number, hi: number) => lo + rng() * (hi - lo);
@@ -98,7 +98,7 @@ function placeBandPads(
     return {
       cx: width * (PLACE_CENTER + edge * range(PLACE_X_OFFSET)),
       cy: bandTop + range(PLACE_Y) * bandH,
-      spread: range(RAFT_SPREAD) * screenScale,
+      spread: range(RAFT_SPREAD) * worldScale,
     };
   });
   for (let i = 0; i < count; i++) {
@@ -108,14 +108,14 @@ function placeBandPads(
     for (let attempt = 0; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
       const hx = raft.cx + gauss() * raft.spread;
       const hy = raft.cy + gauss() * raft.spread;
-      const radius = range(RADIUS) * screenScale;
-      const driftAmp = range(DRIFT_AMP) * screenScale;
+      const radius = range(RADIUS) * worldScale;
+      const driftAmp = range(DRIFT_AMP) * worldScale;
       const bobAmp = range(BOB_AMP);
       const reach = radius * (1 + bobAmp) + driftAmp;
       const clear = pads.every((q) => {
         const dx = q.hx - hx;
         const dy = q.hy - hy;
-        return Math.hypot(dx, dy) >= reach + q.reach + PAD_GAP * screenScale;
+        return Math.hypot(dx, dy) >= reach + q.reach + PAD_GAP * worldScale;
       });
       if (!clear) continue;
       pads.push({
@@ -160,14 +160,14 @@ export class Lilypads {
   constructor(
     private seed: number,
     private width: number,
-    private screenScale: number,
+    private worldScale: number,
   ) {}
 
   // Viewport width/scale truly changed: drop the cache so bands regenerate at
   // the new metrics (deterministic — the same metrics reproduce the field).
-  reconfigure(width: number, screenScale: number): void {
+  reconfigure(width: number, worldScale: number): void {
     this.width = width;
-    this.screenScale = screenScale;
+    this.worldScale = worldScale;
     this.bands.clear();
   }
 
@@ -193,7 +193,7 @@ export class Lilypads {
           this.width,
           b * BAND_H,
           BAND_H,
-          this.screenScale,
+          this.worldScale,
         ),
         lastSeen: this.frame,
       });

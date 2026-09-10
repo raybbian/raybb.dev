@@ -7,7 +7,7 @@ uniform float u_depth;       // this fish's submergence, 0..1 (>0 = "fish here")
 uniform highp vec2 u_res; // logical px (shared w/ vertex stage -> match highp)
 uniform vec2 u_fragRes;   // drawing-buffer px
 uniform float u_time;     // seconds, for the wavy-shadow displacement
-uniform float u_scale;    // screenScale: scales wavy-shadow churn to canvas
+uniform float u_scale;    // worldScale: scales wavy-shadow churn to canvas
 #include "shadow.glsl"
 layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 o_depth; // R = submergence for the water pass

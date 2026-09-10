@@ -1,6 +1,10 @@
 // 2D-canvas drawing primitives shared by sketches.
+//
+// Every length here is in world units (see `figures/units`). The host has
+// already scaled the context, so these are written as plain numbers and come
+// out proportionally identical at any figure size.
 
-const DEFAULT_DIVIDER_INSET = 16;
+const DEFAULT_DIVIDER_INSET = 36;
 
 // Vertical centre divider used by split-panel figures (catmullRom,
 // fragColorModes, uvMapping). Inset keeps the line from touching the top
@@ -11,7 +15,7 @@ export function drawVerticalDivider(
   h: number,
   color: string,
   inset: number = DEFAULT_DIVIDER_INSET,
-  lineWidth: number = 1,
+  lineWidth: number = 2.25,
 ): void {
   ctx.save();
   ctx.strokeStyle = color;
@@ -40,8 +44,8 @@ export function drawArrow(
   toY: number,
   opts: ArrowOpts,
 ): void {
-  const lineWidth = opts.lineWidth ?? 1.5;
-  const head = opts.headSize ?? 8;
+  const lineWidth = opts.lineWidth ?? 3.4;
+  const head = opts.headSize ?? 18;
   const dx = toX - fromX;
   const dy = toY - fromY;
   const len = Math.hypot(dx, dy);

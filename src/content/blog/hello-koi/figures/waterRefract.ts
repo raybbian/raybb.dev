@@ -1,5 +1,5 @@
 import { createProgram, OffscreenTarget } from "@/lib/gl";
-import type { FigureModule, FigureTheme, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, FigureView, Sketch } from "@/figures/types";
 import { LilypadRenderer } from "@/render/LilypadRenderer";
 import {
   DEEP_DARK,
@@ -81,7 +81,7 @@ class WaterRefractSketch implements Sketch {
     this.theme.setTarget(theme);
   }
 
-  resize(w: number, h: number, dpr: number, _screenScale: number) {
+  resize({ w, h, scale: unitPx, dpr }: FigureView) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
@@ -95,8 +95,8 @@ class WaterRefractSketch implements Sketch {
     ]);
 
     this.scene.resize(
-      Math.max(1, Math.round(w * dpr)),
-      Math.max(1, Math.round(h * dpr)),
+      Math.max(1, Math.round(w * unitPx * dpr)),
+      Math.max(1, Math.round(h * unitPx * dpr)),
     );
   }
 

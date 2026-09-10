@@ -4,7 +4,7 @@ in vec2 v_uv;
 uniform sampler2D u_scene;
 uniform highp vec2 u_res; // highp: shadow sample coord + fwidth AA need it
 uniform float u_time;
-uniform float u_scale;     // screenScale: px-unit constants scale like sizes
+uniform float u_scale;     // worldScale: px-unit constants scale like sizes
 uniform vec3 u_deep;       // deep-water tint target
 uniform float u_theme;     // 0 = dark pond, 1 = light pond
 // Pre-baked ripple textures (W4): mask is max-blended across overlapping

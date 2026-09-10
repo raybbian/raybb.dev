@@ -1,5 +1,5 @@
 import { OffscreenTarget } from "@/lib/gl";
-import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { FullscreenShader } from "@/figures/FullscreenShader";
 import { LilypadRenderer } from "@/render/LilypadRenderer";
 import {
@@ -101,7 +101,7 @@ class BakedNoiseSketch implements Sketch {
     this.theme.setTarget(theme);
   }
 
-  resize(w: number, h: number, dpr: number, _screenScale: number) {
+  resize({ w, h, scale: unitPx, dpr }: FigureView) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
@@ -115,8 +115,8 @@ class BakedNoiseSketch implements Sketch {
     ]);
 
     this.scene.resize(
-      Math.max(1, Math.round(w * dpr)),
-      Math.max(1, Math.round(h * dpr)),
+      Math.max(1, Math.round(w * unitPx * dpr)),
+      Math.max(1, Math.round(h * unitPx * dpr)),
     );
   }
 

@@ -24,7 +24,7 @@ uniform float u_rippleCrest;
 
 // Px gain for the wavy shadow on the water surface. Uploaded as a uniform
 // (figureShadowWavyPx) so the wobble amplitude scales with canvas width —
-// at screenScale=1 this is ~100 px, matching production roughly.
+// at worldScale=1 this is ~100 px, matching production roughly.
 uniform float u_shadowWavyPx;
 
 out vec4 o;

@@ -1,11 +1,14 @@
 import { createProgram, OffscreenTarget } from "@/lib/gl";
-import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { RIPPLE_CREST, SHEEN } from "@/render/WaterRenderer";
 import {
   ShadowRenderer,
   SHADOW_BIAS,
   SHADOW_DARKNESS,
   SHADOW_FADE,
+  SHADOW_K,
+  shadowMargin,
+  shadowSunDir,
   WATER_H,
 } from "@/render/ShadowRenderer";
 import {
@@ -16,9 +19,12 @@ import {
 import { LilyLotusFigureScene } from "@/figures/lilyLotusFigureScene";
 import { WiperState } from "@/figures/wiper";
 import { PALETTE as P } from "@/figures/palette";
-import { applyFigureShadowUniforms, figureShadowScale } from "./shadowHelpers";
 import VS from "@/render/shaders/water.vert.glsl";
 import FS from "./shaders/shadowsOnOff.frag.glsl";
+
+// Wavy-shadow gain for lily/lotus casters, in world units — the value the
+// in-shader constant carried at the 1440 reference width.
+const FIGURE_SHADOW_WAVY = 100;
 
 const SHADOW_TEX_UNIT = 2;
 
@@ -64,7 +70,6 @@ class ShadowsOnOffSketch implements Sketch {
   // Unclamped scene ratio (= w / 1440) for shadow uniforms — keeps the
   // shadow at a constant fraction of the figure canvas, matching production
   // at its reference width.
-  private shadowScale = 1;
   private time = 0;
   private wiper = new WiperState();
 
@@ -116,18 +121,18 @@ class ShadowsOnOffSketch implements Sketch {
     this.scene.setTheme(theme);
   }
 
-  resize(w: number, h: number, dpr: number, screenScale: number) {
+  resize({ w, h, scale: unitPx, dpr }: FigureView) {
     this.w = w;
     this.h = h;
-    this.shadowScale = figureShadowScale(w);
     if (w === 0 || h === 0) return;
-    this.scene.resize(w, h, screenScale);
-    const px = Math.max(1, Math.round(w * dpr));
-    const py = Math.max(1, Math.round(h * dpr));
+    this.scene.resize(w, h);
+    const px = Math.max(1, Math.round(w * unitPx * dpr));
+    const py = Math.max(1, Math.round(h * unitPx * dpr));
     this.sceneFbo.resize(px, py);
-    // ShadowRenderer's FBO margin must match the scale used by the cast pass
-    // and the receiver shader, otherwise the texture remap walks off-pixel.
-    this.shadow.resize(px, py, dpr, this.shadowScale);
+    // The FBO is in device px, so its world-unit margin converts through
+    // `unitPx`. The cast pass and receiver shader stay in world units, where
+    // the same margin is the raw constant — they agree by construction.
+    this.shadow.resize(px, py, dpr, unitPx);
   }
 
   pointer(p: PointerInfo) {
@@ -146,7 +151,7 @@ class ShadowsOnOffSketch implements Sketch {
 
     // 1) Caster pass: bake lily + lotus heights into the shadow mask.
     this.shadow.begin();
-    this.scene.castShadows(this.shadowScale);
+    this.scene.castShadows();
     this.shadow.end();
 
     // 2) Visible pass: lily + lotus on transparent bg into the offscreen FBO.
@@ -188,12 +193,15 @@ class ShadowsOnOffSketch implements Sketch {
     gl.uniform1fv(this.u.seed, this.scene.seedBuf);
     gl.uniform3f(this.u.handleDot, P.accentGL[0], P.accentGL[1], P.accentGL[2]);
 
-    // Shadow uniforms — sun direction / margin / K / wavy gain all scale by
-    // the SAME `shadowScale` used by ShadowRenderer.resize and the cast pass,
-    // so net shadow displacement (rawK*casterH - rawK*recvH, both scaled) is
-    // proportional to the canvas. Bias / fade / darkness / heights are
-    // dimensionless and shared with production.
-    applyFigureShadowUniforms(gl, this.u, this.shadowScale, themeMix);
+    // Shadow uniforms in world units: K, margin and the wavy gain are the raw
+    // production constants, because the coordinate space already carries the
+    // scale. Bias / fade / darkness / heights are dimensionless.
+    const sd = shadowSunDir(themeMix);
+    gl.uniform2f(this.u.sunDir, sd[0], sd[1]);
+    const [mx, my] = shadowMargin();
+    gl.uniform2f(this.u.shadowMargin, mx, my);
+    gl.uniform1f(this.u.shadowK, SHADOW_K);
+    gl.uniform1f(this.u.shadowWavyPx, FIGURE_SHADOW_WAVY);
     gl.uniform1f(this.u.shadowDark, SHADOW_DARKNESS);
     gl.uniform1f(this.u.shadowBias, SHADOW_BIAS);
     gl.uniform1f(this.u.shadowFade, SHADOW_FADE);

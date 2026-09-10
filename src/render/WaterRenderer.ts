@@ -475,7 +475,7 @@ export class WaterRenderer {
   // Bakes the ripple foam/crest mask (MAX) and additive displacement (ADD)
   // into the two ripple textures. One instanced draw per pass covers every
   // active ripple as a quad sized to (radius + RIPPLE_BAND).
-  private bakeRipples(width: number, height: number, time: number, screenScale: number) {
+  private bakeRipples(width: number, height: number, time: number, worldScale: number) {
     const gl = this.gl;
     if (this.rippleCount > 0) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.rippleInstVbo);
@@ -501,7 +501,7 @@ export class WaterRenderer {
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(this.rippleMaskProg);
       gl.uniform2f(this.uRippleMaskRes, width, height);
-      gl.uniform1f(this.uRippleMaskScale, screenScale);
+      gl.uniform1f(this.uRippleMaskScale, worldScale);
       gl.uniform1f(this.uRippleMaskTime, time);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.rippleCount);
     }
@@ -516,7 +516,7 @@ export class WaterRenderer {
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(this.rippleDispProg);
       gl.uniform2f(this.uRippleDispRes, width, height);
-      gl.uniform1f(this.uRippleDispScale, screenScale);
+      gl.uniform1f(this.uRippleDispScale, worldScale);
       gl.uniform1f(this.uRippleDispTime, time);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.rippleCount);
     }
@@ -533,7 +533,7 @@ export class WaterRenderer {
     height: number,
     time: number,
     shadowTex: WebGLTexture,
-    screenScale: number,
+    worldScale: number,
   ) {
     const gl = this.gl;
 
@@ -571,7 +571,7 @@ export class WaterRenderer {
     gl.readBuffer(gl.COLOR_ATTACHMENT0); // restore default
 
     // W4: bake ripple mask + disp before the composite reads them.
-    this.bakeRipples(width, height, time, screenScale);
+    this.bakeRipples(width, height, time, worldScale);
 
     gl.disable(gl.BLEND);
     gl.bindVertexArray(this.vao);
@@ -608,7 +608,7 @@ export class WaterRenderer {
     gl.uniform1f(this.uRecvHeight, WATER_H);
     gl.uniform2f(this.uRes, width, height);
     gl.uniform1f(this.uTime, time);
-    gl.uniform1f(this.uScale, screenScale);
+    gl.uniform1f(this.uScale, worldScale);
     gl.uniform1f(this.uSheen, SHEEN);
     gl.uniform1f(this.uRippleCrest, RIPPLE_CREST);
     const t = this.themeMix;

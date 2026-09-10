@@ -1,11 +1,11 @@
 import type { Vec2 } from "@/lib/math";
-import type { FigureModule, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, Sketch } from "@/figures/types";
 import { PALETTE as P } from "@/figures/palette";
 import { Fish, type FishGeometry } from "@/sim/Fish";
 import { DEFAULT_KOI_COLORS } from "@/sim/koiPattern";
 import { FishRenderer } from "@/render/FishRenderer";
 import { PatternBakeProgram } from "@/render/patternBaker";
-import { figureScreenScale, FIGURE_FISH_SCALE } from "@/figures/scale";
+import { FIGURE_FISH_SCALE } from "@/figures/units";
 import { createFigureFish } from "@/figures/figureFish";
 import {
   shiftFishGeometryToHead,
@@ -72,7 +72,6 @@ class UVMappingSketch implements Sketch {
   private w = 0;
   private h = 0;
   private dpr = 1;
-  private panelScale = 1;
   private worldW = 0;
   private worldH = 0;
   private fish: Fish | null = null;
@@ -104,24 +103,20 @@ class UVMappingSketch implements Sketch {
 
   setTheme() {}
 
-  // Two-panel figure: the fish lives in a half-width column; its scale is
-  // derived from `lw` (panel width) using `figureScreenScale` locally. The
-  // host-supplied `screenScale` is unused here because the figure has no
-  // canvas-width-relative text or full-canvas geometry.
-  resize(w: number, h: number, dpr: number, _screenScale: number) {
+  // Two-panel figure: the fish lives in a half-width column. It is sized in
+  // world units like every other figure's fish, so it reads consistently
+  // instead of being derived from a second, panel-local scale.
+  resize({ w, h, scale: unitPx, dpr }: FigureView) {
     this.w = w;
     this.h = h;
     this.dpr = dpr;
     if (w === 0 || h === 0) return;
-    this.glCanvas.width = Math.max(1, Math.ceil(w * dpr));
-    this.glCanvas.height = Math.max(1, Math.ceil(h * dpr));
+    this.glCanvas.width = Math.max(1, Math.ceil(w * unitPx * dpr));
+    this.glCanvas.height = Math.max(1, Math.ceil(h * unitPx * dpr));
     const lw = w / 2;
     this.patURange = (PAT_V_RANGE * (lw / h)) / SHADER_ASPECT;
     this.worldW = lw * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
-    const screenScale = figureScreenScale(lw);
-    this.panelScale = screenScale;
-    const scale = FIGURE_FISH_SCALE * screenScale;
     this.fish = createFigureFish({
       origin: { x: this.worldW / 2, y: this.worldH / 2 },
       colors: {
@@ -130,8 +125,7 @@ class UVMappingSketch implements Sketch {
         accent: DEFAULT_KOI_COLORS.accent,
         fin: DEFAULT_KOI_COLORS.fin,
       },
-      scale,
-      screenScale,
+      sizeScale: FIGURE_FISH_SCALE,
       seed: FIGURE_SEED,
       noisePhase: { heading: FIGURE_NOISE_PHASE },
     });
@@ -174,7 +168,7 @@ class UVMappingSketch implements Sketch {
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.viewport(0, 0, vxLeftW, ph);
-    this.renderer.draw(geo, lw, h, 0, 0, 0, 0, this.panelScale);
+    this.renderer.draw(geo, lw, h, 0, 0, 0, 0);
 
     gl.viewport(vxLeftW, 0, vxRightW, ph);
     this.patBaker.use();
@@ -278,7 +272,7 @@ class UVMappingSketch implements Sketch {
     ctx.rect(0, 0, lw, h);
     ctx.clip();
     ctx.strokeStyle = P.accent;
-    ctx.lineWidth = 1.75;
+    ctx.lineWidth = 3.94;
     ctx.beginPath();
     const [tl, tr, br, bl] = corners;
     const ptl = this.posAt(geo, tl);
@@ -302,7 +296,7 @@ class UVMappingSketch implements Sketch {
     const bl = uvToPatternPx(RECT_U_MIN, RECT_V_MAX, rx0, rw, h, u);
     ctx.save();
     ctx.strokeStyle = P.accent;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4.5;
     ctx.beginPath();
     ctx.moveTo(tl.x, tl.y);
     ctx.lineTo(tr.x, tr.y);
@@ -330,8 +324,8 @@ class UVMappingSketch implements Sketch {
     ctx.save();
     ctx.strokeStyle = P.accent;
     ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 2.25;
+    ctx.setLineDash([6.75, 9]);
     for (let i = 0; i < 4; i++) {
       const fp = this.posAt(geo, corners[i]);
       const pp = uvToPatternPx(uvs[i][0], uvs[i][1], rx0, rw, h, this.patURange);

@@ -29,11 +29,11 @@ export class Treats {
   private rippleMaxR: number; // final splash-ring radius, px
   private scratch = new Float32Array(MAX_TREATS * TREAT_INST_FLOATS);
 
-  constructor(screenScale = 1) {
-    this.radius = TREAT_BASE_R * screenScale;
+  constructor(worldScale = 1) {
+    this.radius = TREAT_BASE_R * worldScale;
     // Scale the eat margin with the morsel, not after it.
-    this._eatRadius = (TREAT_BASE_R + EAT_EXTRA) * screenScale;
-    this.rippleMaxR = RIPPLE_MAX_PX * screenScale * 0.75; // final radius x0.75
+    this._eatRadius = (TREAT_BASE_R + EAT_EXTRA) * worldScale;
+    this.rippleMaxR = RIPPLE_MAX_PX * worldScale * 0.75; // final radius x0.75
   }
 
   get eatRadius(): number {

@@ -1,9 +1,9 @@
 import type { PointerInfo } from "@/figures/types";
 import { PALETTE } from "@/figures/palette";
-import { figureFont } from "@/figures/scale";
+import { figureFont } from "@/figures/units";
 
 export interface SliderConfig {
-  bandHeight?: number; // height of the bottom strip reserved for the slider
+  bandHeight?: number; // world units of bottom strip reserved for the slider
   padX?: number; // horizontal track padding
   knobRadius?: number;
   hitPad?: number; // extra vertical hit area around the track
@@ -42,11 +42,11 @@ export class SliderUI {
   private dragging = false;
 
   constructor(cfg: SliderConfig = {}) {
-    this.bandHeight = cfg.bandHeight ?? 44;
-    this.padX = cfg.padX ?? 28;
-    this.knobRadius = cfg.knobRadius ?? 9;
-    this.hitPad = cfg.hitPad ?? 10;
-    this.trackLineWidth = cfg.trackLineWidth ?? 2;
+    this.bandHeight = cfg.bandHeight ?? 99;
+    this.padX = cfg.padX ?? 63;
+    this.knobRadius = cfg.knobRadius ?? 20;
+    this.hitPad = cfg.hitPad ?? 23;
+    this.trackLineWidth = cfg.trackLineWidth ?? 4.5;
     this.steps = cfg.steps ?? 0;
     this.value = cfg.initial ?? (this.steps > 0 ? 0 : 0.5);
   }
@@ -110,13 +110,10 @@ export class SliderUI {
   }
 
   // Default 2D rendering — track line, optional step dots (steps > 0),
-  // accent knob, optional labels. earClip uses this directly. The slider
-  // chrome (track / knob / step dots / hit area) is a UI affordance and
-  // stays at constant logical px across viewports; `screenScale` is only
-  // used to scale label text so it tracks the rest of the figure's labels.
+  // accent knob, optional labels. earClip uses this directly. All of it is in
+  // world units, so the whole control scales with the figure.
   draw2D(
     ctx: CanvasRenderingContext2D,
-    screenScale: number,
     opts: { leftLabel?: string; rightLabel?: string } = {},
   ): void {
     const g = this.geometry();
@@ -132,27 +129,27 @@ export class SliderUI {
       for (let i = 0; i <= this.steps; i++) {
         const tx = g.x0 + (i / this.steps) * g.w;
         ctx.beginPath();
-        ctx.arc(tx, g.y, 1.5, 0, Math.PI * 2);
+        ctx.arc(tx, g.y, 3.4, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
     ctx.fillStyle = PALETTE.accent;
     ctx.beginPath();
-    ctx.arc(g.knobX, g.y, this.knobRadius - 1, 0, Math.PI * 2);
+    ctx.arc(g.knobX, g.y, this.knobRadius - 2.25, 0, Math.PI * 2);
     ctx.fill();
 
     if (opts.leftLabel || opts.rightLabel) {
       ctx.fillStyle = PALETTE.hint;
-      ctx.font = figureFont(screenScale);
+      ctx.font = figureFont();
       ctx.textBaseline = "alphabetic";
       if (opts.leftLabel) {
         ctx.textAlign = "left";
-        ctx.fillText(opts.leftLabel, g.x0, g.y - 14);
+        ctx.fillText(opts.leftLabel, g.x0, g.y - 31.5);
       }
       if (opts.rightLabel) {
         ctx.textAlign = "right";
-        ctx.fillText(opts.rightLabel, g.x1, g.y - 14);
+        ctx.fillText(opts.rightLabel, g.x1, g.y - 31.5);
       }
       ctx.textAlign = "left";
     }

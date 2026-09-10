@@ -1,4 +1,4 @@
-import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { LotusRenderer } from "@/render/LotusRenderer";
 import { LOTUS_INST_FLOATS } from "@/sim/Lotuses";
 import { createProgram } from "@/lib/gl";
@@ -86,7 +86,7 @@ class LotusPetalMixSketch implements Sketch {
   // Slider chrome (TRACK_H, KNOB_RADIUS) is a UI affordance and stays at
   // constant logical px. Petal length is derived from canvas dimensions, so
   // it already scales geometrically with the figure box.
-  resize(w: number, h: number, _dpr: number, _screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;

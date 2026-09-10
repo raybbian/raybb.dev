@@ -1,38 +1,42 @@
 // Contract between the lazy <Figure> host and an individual figure sketch.
-// Sketches work in CSS pixels; the host hands them `dpr` so they can scale
-// the backing store themselves (2d: setTransform, webgl: viewport).
+//
+// Sketches work entirely in WORLD UNITS (see `lib/worldScale` and
+// `figures/units`). The drawing area is always `view.w` x `view.h` units
+// regardless of its pixel size, and the host installs the units -> device
+// transform before calling `frame`, so a sketch has no scale factor to apply
+// and no pixel literal to write. Constants in `src/sim` and `src/render` are
+// authored in these same units, so a figure can hand them straight to the
+// shared renderers.
 
 export type FigureTheme = "light" | "dark";
 
+export interface FigureView {
+  // Drawing area in world units: `w` is always REF_WIDTH, `h` follows the
+  // figure's aspect. Lay everything out against these.
+  w: number;
+  h: number;
+  // Device pixels per world unit. Needed only at a boundary that genuinely
+  // speaks pixels — sizing an offscreen canvas' backing store, or a shader
+  // that feathers an edge in device pixels. Scene geometry never needs it.
+  scale: number;
+  dpr: number;
+}
+
 export interface PointerInfo {
   type: "down" | "move" | "up";
-  x: number; // CSS px, relative to canvas top-left
+  x: number; // world units, relative to the drawing area's top-left
   y: number;
   // Whether a drag is active (a pointer is currently down).
   down: boolean;
 }
 
 export interface Sketch {
-  // `screenScale` is figureScreenScale(width) computed by the host. Every
-  // scene-rendering pixel literal (text, stroke widths on rendered scene
-  // geometry, shadow offsets / margin / wavy gain) MUST go through
-  // `figurePx` / `figureFont` from `@/figures/scale` (or, for shadow uniforms,
-  // the post-local shadow helpers — see `shadowHelpers.ts` under
-  // `src/content/blog/hello-koi/figures/`). UI affordances — slider
-  // knobs/tracks, divider widths, draggable grabber radii, arrow heads,
-  // hit-test tolerances — stay at constant logical px so touch targets remain
-  // usable at every viewport.
-  resize(
-    width: number,
-    height: number,
-    dpr: number,
-    screenScale: number,
-  ): void;
+  resize(view: FigureView): void;
   frame(t: number, dt: number): void;
   setTheme(theme: FigureTheme): void;
   pointer?(p: PointerInfo): void;
   dispose(): void;
-  // false ⇒ static: the host draws one frame instead of a rAF loop, and
+  // false => static: the host draws one frame instead of a rAF loop, and
   // redraws on resize / theme / pointer.
   animated?: boolean;
 }

@@ -1,8 +1,8 @@
-import type { FigureModule, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, Sketch } from "@/figures/types";
 import { Fish } from "@/sim/Fish";
 import { FishRenderer } from "@/render/FishRenderer";
 import { PALETTE as P } from "@/figures/palette";
-import { FIGURE_FISH_SCALE } from "@/figures/scale";
+import { FIGURE_FISH_SCALE } from "@/figures/units";
 import { createFigureFish } from "@/figures/figureFish";
 import { shiftFishGeometryToHead, SmoothFollowCamera } from "@/figures/fishCamera";
 import fishFlatFrag from "@/render/shaders/fishFlat.frag.glsl";
@@ -27,7 +27,6 @@ class SwimSketch implements Sketch {
   private h = 0;
   private worldW = 0;
   private worldH = 0;
-  private screenScale = 1;
   private fish: Fish | null = null;
   private lastT: number | null = null;
   private camera = new SmoothFollowCamera();
@@ -48,14 +47,13 @@ class SwimSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number, _dpr: number, screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
-    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
     this.worldW = w * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
-    const scale = FIGURE_FISH_SCALE * screenScale;
+
     this.fish = createFigureFish({
       origin: { x: this.worldW / 2, y: this.worldH / 2 },
       colors: {
@@ -64,8 +62,7 @@ class SwimSketch implements Sketch {
         accent: BODY_COLOR,
         fin: FIN_COLOR,
       },
-      scale,
-      screenScale,
+      sizeScale: FIGURE_FISH_SCALE,
       seed: FIGURE_SEED,
       noisePhase: { heading: FIGURE_NOISE_PHASE },
     });
@@ -91,7 +88,7 @@ class SwimSketch implements Sketch {
 
     gl.clearColor(P.bgGL[0], P.bgGL[1], P.bgGL[2], P.bgGL[3]);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    this.renderer.draw(geo, w, h, 0, 0, 0, 0, this.screenScale);
+    this.renderer.draw(geo, w, h, 0, 0, 0, 0);
   }
 
   dispose() {

@@ -1,9 +1,8 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { FISH_HALF_W, fishBodyRing, fitInto } from "./fishMesh";
 import { triangulateSteps, type EarClipStep } from "@/lib/triangulate";
 import { PALETTE as P } from "@/figures/palette";
 import { SliderUI } from "@/figures/SliderUI";
-import { figurePx } from "@/figures/scale";
 
 // Step-by-step ear clipping over a low-res fish polygon. The raw control
 // ring is used directly (no Catmull-Rom smoothing) so each ear is visibly
@@ -32,7 +31,6 @@ class EarClipSketch implements Sketch {
   private ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
-  private screenScale = 1;
   private poly: { x: number; y: number }[] = [];
   private steps: EarClipStep[] = [];
   private slider: SliderUI;
@@ -44,10 +42,9 @@ class EarClipSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number, _dpr: number, screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
-    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
     // Polygon owns the area above the slider band; raw ring → ~24 verts.
     const polyH = Math.max(1, h - this.slider.reservedBand);
@@ -88,7 +85,6 @@ class EarClipSketch implements Sketch {
 
     const { steps } = this;
     const step = this.slider.value as number;
-    const s = this.screenScale;
 
     // Clipped ears so far. Older ones fade to a structural outline; the
     // latest one keeps the accent so the eye lands on what just came off.
@@ -101,7 +97,7 @@ class EarClipSketch implements Sketch {
         c,
         latest ? FILL_LATEST : FILL,
         latest ? P.accent : P.structural,
-        latest ? figurePx(s, 2) : figurePx(s, 1.5),
+        latest ? 4.5 : 3.38,
       );
     }
 
@@ -119,7 +115,7 @@ class EarClipSketch implements Sketch {
 
     if (remaining.length >= 3) {
       ctx.strokeStyle = P.accent;
-      ctx.lineWidth = figurePx(s, 2.75);
+      ctx.lineWidth = 6.19;
       ctx.beginPath();
       const p0 = this.poly[remaining[0]];
       ctx.moveTo(p0.x, p0.y);
@@ -137,11 +133,11 @@ class EarClipSketch implements Sketch {
     for (const i of remaining) {
       const p = this.poly[i];
       ctx.beginPath();
-      ctx.arc(p.x, p.y, figurePx(s, 3.25), 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 7.31, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    this.slider.draw2D(ctx, s, {
+    this.slider.draw2D(ctx, {
       leftLabel: `ear ${step} / ${steps.length}`,
       rightLabel: "drag to clip ears",
     });

@@ -5,7 +5,7 @@ uniform float u_depth; // owning fish's submergence (same value as the body)
 uniform highp vec2 u_res; // logical px (shared w/ vertex stage -> match highp)
 uniform vec2 u_fragRes;   // drawing-buffer px
 uniform float u_time;     // seconds, for the wavy-shadow displacement
-uniform float u_scale;    // screenScale: matches fish.frag's churn scaling
+uniform float u_scale;    // worldScale: matches fish.frag's churn scaling
 #include "shadow.glsl"
 layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 o_depth;

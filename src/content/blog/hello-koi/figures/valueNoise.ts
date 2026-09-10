@@ -1,4 +1,4 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { FullscreenShader } from "@/figures/FullscreenShader";
 import { PanTracker } from "@/figures/PanTracker";
 import FS from "./shaders/valueNoise.frag.glsl";
@@ -6,7 +6,9 @@ import FS from "./shaders/valueNoise.frag.glsl";
 // ~60 CSS pixels per integer lattice step — matches the fish-scale blob
 // size used by the koi-pattern and koi-steps figures so the noise looks
 // the same density across the post.
-const NOISE_PER_CSS_PX = 1 / 60;
+// Noise cells per world unit: 1/60 per CSS px at the 640px desktop width,
+// restated in units so the field shows the same cell count at every size.
+const NOISE_PER_UNIT = 1 / 135;
 
 class ValueNoiseSketch implements Sketch {
   animated = false;
@@ -25,13 +27,13 @@ class ValueNoiseSketch implements Sketch {
     this.shader = new FullscreenShader(gl, FS);
     this.uUvScale = this.shader.uniform("u_uvScale");
     this.uPan = this.shader.uniform("u_pan");
-    this.pan = new PanTracker(NOISE_PER_CSS_PX);
+    this.pan = new PanTracker(NOISE_PER_UNIT);
   }
 
   setTheme() {}
 
   // Fullscreen shader: noise period is in `1/CSS px`, already canvas-relative.
-  resize(w: number, h: number, _dpr: number, _screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
   }
@@ -47,7 +49,7 @@ class ValueNoiseSketch implements Sketch {
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.shader.draw(() => {
       if (this.uUvScale)
-        gl.uniform2f(this.uUvScale, w * NOISE_PER_CSS_PX, h * NOISE_PER_CSS_PX);
+        gl.uniform2f(this.uUvScale, w * NOISE_PER_UNIT, h * NOISE_PER_UNIT);
       if (this.uPan) gl.uniform2f(this.uPan, this.pan.panX, this.pan.panY);
     });
   }

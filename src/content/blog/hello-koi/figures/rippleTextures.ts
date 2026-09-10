@@ -1,5 +1,5 @@
 import { createProgram } from "@/lib/gl";
-import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { LilypadRenderer } from "@/render/LilypadRenderer";
 import {
   bindNoiseUniform,
@@ -82,7 +82,6 @@ class RippleTexturesSketch implements Sketch {
 
   private w = 0;
   private h = 0;
-  private screenScale = 1;
   private fboW = 0;
   private fboH = 0;
   private lilyR = 0;
@@ -167,13 +166,12 @@ class RippleTexturesSketch implements Sketch {
     this.theme.setTarget(theme);
   }
 
-  resize(w: number, h: number, dpr: number, screenScale: number) {
+  resize({ w, h, scale: unitPx, dpr }: FigureView) {
     this.w = w;
     this.h = h;
-    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
-    const fboW = Math.max(1, Math.round(w * dpr));
-    const fboH = Math.max(1, Math.round(h * dpr));
+    const fboW = Math.max(1, Math.round(w * unitPx * dpr));
+    const fboH = Math.max(1, Math.round(h * unitPx * dpr));
     if (fboW !== this.fboW || fboH !== this.fboH) {
       this.fboW = fboW;
       this.fboH = fboH;
@@ -262,8 +260,8 @@ class RippleTexturesSketch implements Sketch {
     } else if (p.type === "move" && p.down && this.dragging) {
       const dx = p.x - this.lastPx;
       this.lastPx = p.x;
-      // Both halves track the same gap, so a 1px drag widens the gap by 2px
-      // (one pad moves out by 1px, its sibling moves the other way by 1px).
+      // Both halves track the same gap, so a drag of 1 unit widens the gap by
+      // 2 (one pad moves out by 1, its sibling moves the other way by 1).
       const next = Math.min(
         Math.max(this.gap + dx * 2, this.gapMin),
         this.gapMax,
@@ -283,7 +281,6 @@ class RippleTexturesSketch implements Sketch {
     if (w === 0 || h === 0) return;
     if (this.theme.advance(dt)) this.lily.setTheme(this.theme.mix);
     const bg = lerpRgb(BG_DARK, BG_LIGHT, this.theme.mix);
-    const screenScale = this.screenScale;
 
     const vpSave = gl.getParameter(gl.VIEWPORT) as Int32Array;
 
@@ -299,7 +296,7 @@ class RippleTexturesSketch implements Sketch {
     gl.blendFunc(gl.ONE, gl.ONE);
     gl.useProgram(this.maskProg);
     gl.uniform2f(this.uMaskRes, w, h);
-    gl.uniform1f(this.uMaskScale, screenScale);
+    gl.uniform1f(this.uMaskScale, 1);
     gl.uniform1f(this.uMaskTime, t);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, TOTAL_LILIES);
 
@@ -312,7 +309,7 @@ class RippleTexturesSketch implements Sketch {
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(this.dispProg);
       gl.uniform2f(this.uDispRes, w, h);
-      gl.uniform1f(this.uDispScale, screenScale);
+      gl.uniform1f(this.uDispScale, 1);
       gl.uniform1f(this.uDispTime, t);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, TOTAL_LILIES);
     }

@@ -165,7 +165,7 @@ export class FishRenderer {
   private themeMix = 1; // 0 = dark, 1 = light; eased by the caller
   private scroll = 0; // parallax offset (logical px) for the current draw()
   private time = 0; // seconds, drives the wavy-shadow displacement
-  private screenScale = 1; // canvas-relative scale for the wavy-shadow churn
+  private worldScale = 1; // canvas-relative scale for the wavy-shadow churn
 
   // Cast-shadow mask owned by ShadowRenderer, bound on unit 1.
   private solidShadow: ShadowLocs | null = null;
@@ -501,7 +501,7 @@ export class FishRenderer {
     if (this.ellipseScrollLoc) gl.uniform1f(this.ellipseScrollLoc, this.scroll);
     if (this.ellipseDepthLoc) gl.uniform1f(this.ellipseDepthLoc, this.depth);
     if (this.ellipseTimeLoc) gl.uniform1f(this.ellipseTimeLoc, this.time);
-    if (this.ellipseScaleLoc) gl.uniform1f(this.ellipseScaleLoc, this.screenScale);
+    if (this.ellipseScaleLoc) gl.uniform1f(this.ellipseScaleLoc, this.worldScale);
     if (this.ellipseOffset) gl.uniform2f(this.ellipseOffset, 0, 0);
     this.applyShadow(this.ellipseShadow);
     gl.bindVertexArray(this.ellipseVao);
@@ -520,18 +520,18 @@ export class FishRenderer {
     paletteIndex = 0,
     scroll = 0,
     time = 0,
-    // Canvas-relative `screenScale` so the cast-shadow wobble amplitude
+    // Canvas-relative `worldScale` so the cast-shadow wobble amplitude
     // (`SHADOW_WAVY_PX` in shadow.glsl) tracks viewport width instead of
     // staying at 30 logical px regardless of zoom. Defaults to 1 (production
     // pre-existing behavior) so callers that haven't been updated still work.
-    screenScale = 1,
+    worldScale = 1,
   ) {
     const gl = this.gl;
     const res: [number, number] = [width, height];
     this.depth = depth;
     this.scroll = scroll;
     this.time = time;
-    this.screenScale = screenScale;
+    this.worldScale = worldScale;
 
     // Painter order: fins under body, eyes on top.
     if (this.enable.fins) {
@@ -552,7 +552,7 @@ export class FishRenderer {
       if (this.solidScrollLoc) gl.uniform1f(this.solidScrollLoc, scroll);
       if (this.solidDepthLoc) gl.uniform1f(this.solidDepthLoc, depth);
       if (this.solidTimeLoc) gl.uniform1f(this.solidTimeLoc, time);
-      if (this.solidScaleLoc) gl.uniform1f(this.solidScaleLoc, screenScale);
+      if (this.solidScaleLoc) gl.uniform1f(this.solidScaleLoc, worldScale);
       if (this.solidOffset) gl.uniform2f(this.solidOffset, 0, 0);
       if (this.features.pattern && this.patternLoc && this.patternTexes.length > 0) {
         gl.activeTexture(gl.TEXTURE0);

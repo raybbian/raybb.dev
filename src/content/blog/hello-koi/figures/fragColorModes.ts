@@ -1,9 +1,9 @@
-import type { FigureModule, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, Sketch } from "@/figures/types";
 import { fishBodyMesh } from "./fishMesh";
 import { Fish } from "@/sim/Fish";
 import { DEFAULT_KOI_COLORS } from "@/sim/koiPattern";
 import { PALETTE as P } from "@/figures/palette";
-import { figureScreenScale, FIGURE_FISH_SCALE, figureFont } from "@/figures/scale";
+import { FIGURE_FISH_SCALE, figureFont } from "@/figures/units";
 import { createFigureFish } from "@/figures/figureFish";
 import { createHeadCamera, SmoothFollowCamera } from "@/figures/fishCamera";
 import { drawVerticalDivider } from "@/figures/canvas2d";
@@ -30,7 +30,6 @@ class FragColorSketch implements Sketch {
   private h = 0;
   private worldW = 0;
   private worldH = 0;
-  private screenScale = 1;
   private fish: Fish | null = null;
   private lastT: number | null = null;
   private camera = new SmoothFollowCamera();
@@ -42,19 +41,15 @@ class FragColorSketch implements Sketch {
   setTheme() {}
 
   // Two-panel figure: the fish lives in a half-width column, so its scale is
-  // derived from `panelW`, not the full canvas. Label text uses the host-
-  // supplied `screenScale` (which IS based on canvas width) so it tracks the
-  // other figures' labels.
-  resize(w: number, h: number, _dpr: number, screenScale: number) {
+  // derived from `panelW`, not the full canvas. The fish itself is sized in
+  // world units like every other figure's, so it reads at a consistent size.
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
-    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
     const panelW = w / 2;
     this.worldW = panelW * WORLD_MULT;
     this.worldH = h * WORLD_MULT;
-    const panelScale = figureScreenScale(panelW);
-    const scale = FIGURE_FISH_SCALE * panelScale;
     this.fish = createFigureFish({
       origin: { x: this.worldW / 2, y: this.worldH / 2 },
       colors: {
@@ -63,8 +58,7 @@ class FragColorSketch implements Sketch {
         accent: DEFAULT_KOI_COLORS.accent,
         fin: DEFAULT_KOI_COLORS.fin,
       },
-      scale,
-      screenScale: panelScale,
+      sizeScale: FIGURE_FISH_SCALE,
       seed: FIGURE_SEED,
       noisePhase: { heading: FIGURE_NOISE_PHASE },
     });
@@ -177,9 +171,9 @@ class FragColorSketch implements Sketch {
     drawVerticalDivider(ctx, panelW, h, P.divider);
 
     ctx.fillStyle = P.hint;
-    ctx.font = figureFont(this.screenScale);
-    ctx.fillText("world space", 10, 18);
-    ctx.fillText("body space (uv)", panelW + 10, 18);
+    ctx.font = figureFont();
+    ctx.fillText("world space", 22.5, 40.5);
+    ctx.fillText("body space (uv)", panelW + 22.5, 40.5);
   }
 
   dispose() {}

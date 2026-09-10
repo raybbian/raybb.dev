@@ -5,8 +5,8 @@ import { FaCheck, FaRegCopy, FaSpinner, FaXmark } from "react-icons/fa6";
 import { useInView } from "@/lib/useInView";
 import { useTheme } from "@/lib/useTheme";
 import { useFigureRegistry } from "@/figures/registryContext";
-import { figureScreenScale } from "@/figures/scale";
-import type { Sketch, SketchHost } from "@/figures/types";
+import { worldScale, viewUnits } from "@/lib/worldScale";
+import type { FigureView, Sketch, SketchHost } from "@/figures/types";
 
 // How a figure's intrinsic aspect maps into the container box:
 //  - "fit":     letterbox, never distorted (default — a fish looks like a fish)
@@ -117,8 +117,17 @@ export function Figure({
       const sketch = mod.create(host, initialTheme);
       sketchRef.current = sketch;
 
-      // Placement of the intrinsic-aspect drawing area inside the box.
+      // Placement of the intrinsic-aspect drawing area inside the box, plus
+      // the world-unit view hand to the sketch. `units` is constant for a
+      // given figure (REF_WIDTH wide); only `scale` moves as the box resizes.
       const view = { ox: 0, oy: 0, dw: 0, dh: 0, dpr: 1 };
+      const units = viewUnits(mod.aspect);
+      const sketchView: FigureView = {
+        w: units.w,
+        h: units.h,
+        scale: 1,
+        dpr: 1,
+      };
       const place = () => {
         const cw = box.clientWidth;
         const ch = box.clientHeight;
@@ -141,12 +150,18 @@ export function Figure({
         view.dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(cw * view.dpr);
         canvas.height = Math.round(ch * view.dpr);
+        // One world unit spans `dw / REF_WIDTH` CSS px. Baking that into the
+        // 2D transform is what lets sketches draw in units directly; the GL
+        // path gets the same effect by taking `u_res` in units.
+        sketchView.scale = worldScale(view.dw);
+        sketchView.dpr = view.dpr;
         if (host.kind === "2d") {
+          const k = sketchView.scale * view.dpr;
           host.ctx.setTransform(
-            view.dpr,
+            k,
             0,
             0,
-            view.dpr,
+            k,
             view.ox * view.dpr,
             view.oy * view.dpr,
           );
@@ -192,7 +207,7 @@ export function Figure({
       const applySize = () => {
         if (box.clientWidth === 0 || box.clientHeight === 0) return;
         place();
-        sketch.resize(view.dw, view.dh, view.dpr, figureScreenScale(view.dw));
+        sketch.resize(sketchView);
         if (!running) redraw();
       };
       const ro = new ResizeObserver(applySize);
@@ -200,11 +215,13 @@ export function Figure({
       applySize();
 
       let down = false;
+      // World units, so hit-testing compares against the same numbers the
+      // sketch drew with.
       const toLocal = (e: PointerEvent) => {
         const r = canvas.getBoundingClientRect();
         return {
-          x: e.clientX - r.left - view.ox,
-          y: e.clientY - r.top - view.oy,
+          x: (e.clientX - r.left - view.ox) / sketchView.scale,
+          y: (e.clientY - r.top - view.oy) / sketchView.scale,
         };
       };
       const onDown = (e: PointerEvent) => {
@@ -251,7 +268,7 @@ export function Figure({
       cancelled = true;
       cleanup();
     };
-  }, [activated, id, fit, figures]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activated, id, fit, figures]);
 
   // Pause/resume as the figure scrolls in and out of view.
   useEffect(() => {

@@ -53,7 +53,7 @@ class KoiStepsSketch implements Sketch {
 
   setTheme() {}
   // Fullscreen shader: no scene-px literals to scale.
-  resize(_w: number, _h: number, _dpr: number, _screenScale: number) {}
+  resize() {}
 
   frame() {
     const { gl } = this;

@@ -4,9 +4,9 @@ import type { Vec2 } from "@/lib/math";
 export interface FigureFishOpts {
   origin: Vec2;
   colors: FishColors;
-  scale: number; // post-screenScale, already canvas-relative
-  screenScale: number;
-  maxScale?: number; // defaults to `scale` (no growth)
+  // Dimensionless individuality; `Fish` applies the view scale itself.
+  sizeScale: number;
+  maxSizeScale?: number; // defaults to `sizeScale` (no growth)
   depth?: number; // default 0.4 — fixed submergence (no bob)
   seed: number;
   noisePhase?: {
@@ -26,7 +26,7 @@ export function createFigureFish(opts: FigureFishOpts): Fish {
     opts.origin,
     opts.colors,
     opts.depth ?? 0.4,
-    opts.scale,
+    opts.sizeScale,
     {
       noisePhaseHeading: opts.noisePhase?.heading,
       noisePhaseSpeed: opts.noisePhase?.speed,
@@ -35,7 +35,8 @@ export function createFigureFish(opts: FigureFishOpts): Fish {
       cruiseSpeed: opts.cruiseSpeed,
       turnRateMult: opts.turnRateMult,
     },
-    opts.screenScale,
-    opts.maxScale ?? opts.scale,
+    // Figures draw in world units, so one unit is one world unit: 1.
+    1,
+    opts.maxSizeScale ?? opts.sizeScale,
   );
 }

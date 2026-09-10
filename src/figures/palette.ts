@@ -13,8 +13,8 @@ export const PALETTE = {
   accent: "#2dd4bf", // curves / contour / active
   hint: "rgba(148,163,184,0.6)",
 
-  // No `font` here — figures must use `figureFont(this.screenScale)` from
-  // `@/figures/scale` so label text scales with canvas width.
+  // No `font` here — figures use `figureFont()` from `@/figures/units`,
+  // which is already sized in world units.
 
   fillGL: [0.18, 0.83, 0.75, 0.22] as [number, number, number, number],
   wireGL: [0.7, 0.78, 0.85, 0.85] as [number, number, number, number],

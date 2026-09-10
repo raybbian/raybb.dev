@@ -12,7 +12,7 @@ uniform vec3 u_bg;
 
 out vec4 o;
 
-// Single ripple peaks at length(disp) ≈ RIPPLE_PUSH * screenScale (~2.5px at
+// Single ripple peaks at length(disp) ≈ RIPPLE_PUSH * worldScale (~2.5px at
 // scale 1). 5.0 puts one peak at 0.5 brightness, leaving headroom so
 // constructive overlap reads as visibly brighter than either ring alone.
 const float DISP_VIS_SCALE = 5.0;

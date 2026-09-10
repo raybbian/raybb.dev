@@ -1,4 +1,4 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { Fish, type FishGeometry } from "@/sim/Fish";
 import { CHAIN_LINK_SIZE } from "@/sim/fishBodyMesh";
 import { FishRenderer } from "@/render/FishRenderer";
@@ -72,8 +72,8 @@ class RibbonSketch implements Sketch {
 
   // Static figure: the fish is built once and fit into the canvas with an
   // internal transform (see `buildAndFit`), so there are no scene-px literals
-  // to scale here. `screenScale` is accepted for the Sketch contract.
-  resize(w: number, h: number, _dpr: number, _screenScale: number) {
+  // to scale here — world units carry it.
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
     this.geo = null;

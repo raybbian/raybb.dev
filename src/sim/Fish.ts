@@ -224,8 +224,9 @@ export class Fish {
   private burstRng: () => number;
   private burstTimer: number;
   private bursting = false;
-  private curScale: number; // grows toward maxScale as the fish is fed
-  private maxScale: number; // growth cap (the un-reduced rng max)
+  private worldScale: number; // px per world unit for the view this fish is in
+  private curScale: number; // dimensionless; grows toward maxScale when fed
+  private maxScale: number; // dimensionless growth cap (the un-reduced rng max)
   private satedTimer = 0; // sec left ignoring treats after a recent meal
   // Latest per-component contributions to the desired heading, set in
   // resolve(). Read-only via `debug` so the behavior figure can visualize
@@ -280,35 +281,42 @@ export class Fish {
   };
   private _bodyMesh: BodyMeshScratch = createBodyMeshScratch();
 
+  // `sizeScale` / `maxSizeScale` are dimensionless individuality: how large
+  // this fish is next to its schoolmates and how large it may grow by feeding.
+  // `worldScale` is the view's px-per-world-unit (see `lib/worldScale`).
+  // Callers pass the two separately and never premultiply, so a bigger fish is
+  // bigger without swimming faster, and a single view scale drives body
+  // geometry and kinematics alike.
   constructor(
     origin: Vec2,
     colors: FishColors,
     depth = DEPTH_BASE,
-    scale = 1,
+    sizeScale = 1,
     swim: SwimParams = {},
-    screenScale = 1,
-    maxScale = scale,
+    worldScale = 1,
+    maxSizeScale = sizeScale,
   ) {
+    this.worldScale = worldScale;
     this.spine = new Chain(
       origin,
       CHAIN_JOINTS,
-      CHAIN_LINK_SIZE * scale,
+      CHAIN_LINK_SIZE * sizeScale * worldScale,
       CHAIN_MAX_BEND,
     );
     this.colors = colors;
     this.fixedDepth = depth < 0 ? 0 : depth > 1 ? 1 : depth;
 
-    this.curScale = scale;
-    this.maxScale = Math.max(scale, maxScale);
-    this.applyScale(scale);
+    this.curScale = sizeScale;
+    this.maxScale = Math.max(sizeScale, maxSizeScale);
+    this.applyScale(sizeScale);
 
-    // Speed and sense radii scale with the screen like sizes do, so the
-    // school behaves the same relative to the pond at any resolution.
-    this.containInset = CONTAIN_INSET * screenScale;
-    this.avoidRadius = AVOID_RADIUS * screenScale;
-    this.seekRadius = SEEK_RADIUS * screenScale;
-    this.mouthAnticipDist = MOUTH_ANTICIP_DIST * screenScale;
-    this.cruiseSpeed = (swim.cruiseSpeed ?? CRUISE_SPEED) * screenScale;
+    // Sense radii and speed are world-unit constants like the body widths, so
+    // they take the view scale the same way.
+    this.containInset = CONTAIN_INSET * worldScale;
+    this.avoidRadius = AVOID_RADIUS * worldScale;
+    this.seekRadius = SEEK_RADIUS * worldScale;
+    this.mouthAnticipDist = MOUTH_ANTICIP_DIST * worldScale;
+    this.cruiseSpeed = (swim.cruiseSpeed ?? CRUISE_SPEED) * worldScale;
     this.turnRateMult = swim.turnRateMult ?? 1;
     this.noisePhaseHeading = swim.noisePhaseHeading ?? 0;
     this.noisePhaseSpeed = swim.noisePhaseSpeed ?? 0;
@@ -333,26 +341,28 @@ export class Fish {
     return this.pos(0, 0, this.snoutTipLen);
   }
 
-  // Re-derives every size-dependent field from `s`. Called once at
+  // Re-derives every size-dependent field from the dimensionless `s`,
+  // converting world units to px through the view scale. Called once at
   // construction and again on each feed so the fish can grow in place.
   private applyScale(s: number): void {
-    this.spine.linkSize = CHAIN_LINK_SIZE * s;
-    this.bodyWidth = BODY_WIDTHS.map((w) => w * s);
-    this.snoutTipLen = SNOUT_TIP_LEN * s;
-    this.snoutTipLenOpen = SNOUT_OPEN_TIP_LEN * s;
-    this.snoutOpenLipOut = SNOUT_OPEN_LIP_OUT * s;
-    this.snoutProtrude = SNOUT_OPEN_PROTRUDE * s;
-    this.eyeDiam = EYE_DIAM * s;
-    this.eyeOffset = EYE_OFFSET * s;
-    this.pectoralW = PECTORAL_W * s;
-    this.pectoralH = PECTORAL_H * s;
-    this.ventralW = VENTRAL_W * s;
-    this.ventralH = VENTRAL_H * s;
-    this.dorsalCtrlDist = DORSAL_CTRL_DIST * s;
-    this.dorsalFinHeight = DORSAL_FIN_HEIGHT * s;
-    this.caudalAmp = CAUDAL_AMP * s;
-    this.caudalWidthGain = CAUDAL_WIDTH_GAIN * s;
-    this.caudalWidthClamp = CAUDAL_WIDTH_CLAMP * s;
+    const k = s * this.worldScale;
+    this.spine.linkSize = CHAIN_LINK_SIZE * k;
+    this.bodyWidth = BODY_WIDTHS.map((w) => w * k);
+    this.snoutTipLen = SNOUT_TIP_LEN * k;
+    this.snoutTipLenOpen = SNOUT_OPEN_TIP_LEN * k;
+    this.snoutOpenLipOut = SNOUT_OPEN_LIP_OUT * k;
+    this.snoutProtrude = SNOUT_OPEN_PROTRUDE * k;
+    this.eyeDiam = EYE_DIAM * k;
+    this.eyeOffset = EYE_OFFSET * k;
+    this.pectoralW = PECTORAL_W * k;
+    this.pectoralH = PECTORAL_H * k;
+    this.ventralW = VENTRAL_W * k;
+    this.ventralH = VENTRAL_H * k;
+    this.dorsalCtrlDist = DORSAL_CTRL_DIST * k;
+    this.dorsalFinHeight = DORSAL_FIN_HEIGHT * k;
+    this.caudalAmp = CAUDAL_AMP * k;
+    this.caudalWidthGain = CAUDAL_WIDTH_GAIN * k;
+    this.caudalWidthClamp = CAUDAL_WIDTH_CLAMP * k;
   }
 
   eat(): void {

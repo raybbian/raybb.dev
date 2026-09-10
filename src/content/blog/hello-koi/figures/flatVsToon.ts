@@ -1,5 +1,5 @@
 import { createProgram, OffscreenTarget } from "@/lib/gl";
-import type { FigureModule, FigureTheme, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureTheme, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { RIPPLE_CREST, SHEEN } from "@/render/WaterRenderer";
 import {
   bindNoiseUniform,
@@ -73,14 +73,14 @@ class FlatVsToonSketch implements Sketch {
     this.scene.setTheme(theme);
   }
 
-  resize(w: number, h: number, dpr: number, screenScale: number) {
+  resize({ w, h, scale: unitPx, dpr }: FigureView) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
-    this.scene.resize(w, h, screenScale);
+    this.scene.resize(w, h);
     this.sceneFbo.resize(
-      Math.max(1, Math.round(w * dpr)),
-      Math.max(1, Math.round(h * dpr)),
+      Math.max(1, Math.round(w * unitPx * dpr)),
+      Math.max(1, Math.round(h * unitPx * dpr)),
     );
   }
 

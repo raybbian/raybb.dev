@@ -1,11 +1,11 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { Fish } from "@/sim/Fish";
 import { FishRenderer } from "@/render/FishRenderer";
 import { TreatRenderer } from "@/render/TreatRenderer";
 import { TREAT_INST_FLOATS } from "@/sim/Treats";
 import { PALETTE as P } from "@/figures/palette";
 import { createProgram } from "@/lib/gl";
-import { FIGURE_FISH_SCALE, FIGURE_FISH_MAX } from "@/figures/scale";
+import { FIGURE_FISH_SCALE, FIGURE_FISH_MAX } from "@/figures/units";
 import { createFigureFish } from "@/figures/figureFish";
 import fishFlatFrag from "@/render/shaders/fishFlat.frag.glsl";
 import ellipseFlatFrag from "@/render/shaders/ellipseFlat.frag.glsl";
@@ -18,7 +18,7 @@ import type { Vec2 } from "@/lib/math";
 // World == canvas: every fish stays visible. No camera follow.
 const FISH_COUNT = 4;
 const TREAT_CAP = 8;
-// Base radii in px at screenScale==1. resize() scales these by figureScreenScale
+// Base radii in world units, used as authored — the coordinate space scales them.
 // so the treat morsel and eat trigger track the panel like everything else.
 const TREAT_RADIUS_BASE = 7;
 const EAT_RADIUS_BASE = 26; // matches Treats.EAT_EXTRA + small slack
@@ -133,7 +133,6 @@ class FishBehaviorSketch implements Sketch {
   private mouse: Vec2 | null = null;
   private w = 0;
   private h = 0;
-  private screenScale = 1;
   private treatRadius = TREAT_RADIUS_BASE;
   private eatR2 = (EAT_RADIUS_BASE + TREAT_RADIUS_BASE) ** 2;
   private eatR = EAT_RADIUS_BASE + TREAT_RADIUS_BASE;
@@ -247,21 +246,20 @@ class FishBehaviorSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number, _dpr: number, screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
     if (w === 0 || h === 0) return;
-    // Canvas-relative scale so fish/sense-radii/treats track the panel.
-    this.screenScale = screenScale;
-    this.treatRadius = TREAT_RADIUS_BASE * this.screenScale;
-    this.eatR = EAT_RADIUS_BASE * this.screenScale + this.treatRadius;
+    // World units already track the panel, so the bases are used as authored.
+    this.treatRadius = TREAT_RADIUS_BASE;
+    this.eatR = EAT_RADIUS_BASE + this.treatRadius;
     this.eatR2 = this.eatR * this.eatR;
     // Spawn the school once. On subsequent resizes the fish stay put — the
     // edge-containment force pushes them back into bounds if the panel
     // shrinks, no need to reseed.
     if (this.fish.length === 0) {
-      const scale = FIGURE_FISH_SCALE * this.screenScale;
-      const maxScale = FIGURE_FISH_MAX * this.screenScale;
+      const sizeScale = FIGURE_FISH_SCALE;
+      const maxSizeScale = FIGURE_FISH_MAX;
       for (let i = 0; i < FISH_COUNT; i++) {
         // Stagger initial positions across the canvas so the school doesn't
         // start clumped at the centre.
@@ -276,9 +274,8 @@ class FishBehaviorSketch implements Sketch {
               accent: BODY_COLORS[i % BODY_COLORS.length],
               fin: FIN_COLOR,
             },
-            scale,
-            screenScale: this.screenScale,
-            maxScale,
+            sizeScale,
+            maxSizeScale,
             cruiseSpeed:
               FIGURE_CRUISE_BASE + (i / FISH_COUNT) * FIGURE_CRUISE_JITTER,
             seed: 0x6f1547a2 ^ (i * 0x9e3779b1),
@@ -354,7 +351,7 @@ class FishBehaviorSketch implements Sketch {
 
     for (const f of this.fish) {
       const geo = f.buildGeometry();
-      this.renderer.draw(geo, w, h, 0, 0, 0, 0, this.screenScale);
+      this.renderer.draw(geo, w, h, 0, 0, 0, 0);
     }
 
     // Debug overlay on top: state pips above each fish, eat-radius rings

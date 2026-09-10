@@ -17,6 +17,7 @@ import { mag, sub, mulberry32, type Vec2 } from "@/lib/math";
 import { pickKoiColors } from "@/sim/koiPattern";
 import { instrumentGl } from "@/lib/glPerf";
 import { buildNoiseTexture, NOISE_TEX_UNIT } from "@/render/noiseTexture";
+import { clampedWorldScale } from "@/lib/worldScale";
 
 const FISH_COUNT = 6;
 const FISH_SCALE_MEAN = 0.475; // 5% smaller than the original school
@@ -48,9 +49,6 @@ const DT_CLAMP_S = 0.1; // cap dt so a backgrounded tab doesn't teleport
 // Pond is a tall virtual scene; only a viewport slice is drawn. Height is a
 // fraction of page content, so it scrolls slower than the page.
 const SCENE_FRACTION = 0.4;
-const REF_WIDTH = 1440; // viewport width at which sizes are 1x
-const SCREEN_SCALE_MIN = 0.6;
-const SCREEN_SCALE_MAX = 1.4;
 const RESIZE_DEBOUNCE_MS = 150;
 const MOUSE_FAST_PXS = 650; // cursor px/s above which fish flee
 const SCARE_DUR = 0.7; // s a poke keeps scaring fish from that spot
@@ -119,12 +117,9 @@ export default function FishBackground() {
     const rng = mulberry32(seed);
 
     // Sizes normalize to viewport width so the school isn't huge on a phone
-    // nor tiny on a 4k monitor.
-    let screenScale = clamp(
-      width / REF_WIDTH,
-      SCREEN_SCALE_MIN,
-      SCREEN_SCALE_MAX,
-    );
+    // nor tiny on a 4k monitor. Clamped because the viewport width is
+    // unbounded; figures use the same function unclamped.
+    let scale = clampedWorldScale(width);
     let sceneW = width;
 
     // One palette per fish, each baked into its own pattern texture.
@@ -138,11 +133,10 @@ export default function FishBackground() {
     // the initial visible window; edge avoidance keeps them on screen after.
     const makeFishes = () =>
       palettes.map((p, i) => {
-        const maxScale = FISH_SCALE_CAP * screenScale;
-        const scale =
-          FISH_SCALE_MEAN *
-          (1 + (rng() * 2 - 1) * FISH_SCALE_VAR) *
-          screenScale;
+        // Dimensionless individuality; `Fish` applies the view scale itself.
+        const maxSizeScale = FISH_SCALE_CAP;
+        const sizeScale =
+          FISH_SCALE_MEAN * (1 + (rng() * 2 - 1) * FISH_SCALE_VAR);
         const fish = new Fish(
           {
             x: sceneW * (SPAWN_INSET + rng() * (1 - 2 * SPAWN_INSET)),
@@ -150,7 +144,7 @@ export default function FishBackground() {
           },
           { base: p.base, mid: p.mid, accent: p.accent, fin: p.fin },
           FISH_DEPTH_MIN + rng() * (FISH_DEPTH_MAX - FISH_DEPTH_MIN),
-          scale,
+          sizeScale,
           {
             cruiseSpeed: 3.5 + rng() * 2.5,
             turnRateMult: 0.45 + rng() * 0.3,
@@ -159,8 +153,8 @@ export default function FishBackground() {
             noisePhaseMouth: rng() * 1000,
             seed: (rng() * 2 ** 32) >>> 0,
           },
-          screenScale,
-          maxScale,
+          scale,
+          maxSizeScale,
         );
         return { fish, palette: i };
       });
@@ -174,15 +168,15 @@ export default function FishBackground() {
         geo: o.fish.buildGeometry(),
       }));
     let ordered = buildOrdered();
-    const lilypads = new Lilypads(seed, sceneW, screenScale);
+    const lilypads = new Lilypads(seed, sceneW, scale);
     const lpRenderer = new LilypadRenderer(gl);
-    const lotuses = new Lotuses(seed, sceneW, screenScale);
+    const lotuses = new Lotuses(seed, sceneW, scale);
     const lotusRenderer = new LotusRenderer(gl);
     const water = new WaterRenderer(gl);
     const shadow = new ShadowRenderer(gl);
-    let treats = new Treats(screenScale);
+    let treats = new Treats(scale);
     const treatRenderer = new TreatRenderer(gl);
-    let ripples = new Ripples(screenScale);
+    let ripples = new Ripples(scale);
     // Pond palette tracks the site theme. 1 = light pond, 0 = dark. themeMix
     // eases toward the target so a toggle fades the water in lockstep with
     // the CSS frost transition (~250ms) instead of snapping.
@@ -253,7 +247,7 @@ export default function FishBackground() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
 
-    // Realloc GL buffers and rebuild the scene at the new screenScale.
+    // Realloc GL buffers and rebuild the scene at the new scale.
     const applyResize = () => {
       const nextW = viewportW();
       const nextH = viewportH();
@@ -263,20 +257,16 @@ export default function FishBackground() {
       width = nextW;
       height = nextH;
       sizeCanvas();
-      screenScale = clamp(
-        width / REF_WIDTH,
-        SCREEN_SCALE_MIN,
-        SCREEN_SCALE_MAX,
-      );
+      scale = clampedWorldScale(width);
       sceneW = width;
       fishes = makeFishes();
       ordered = buildOrdered();
       // Bands regenerate lazily at the new metrics (deterministic, so the same
       // metrics reproduce the same field).
-      lilypads.reconfigure(sceneW, screenScale);
-      lotuses.reconfigure(sceneW, screenScale);
-      treats = new Treats(screenScale);
-      ripples = new Ripples(screenScale);
+      lilypads.reconfigure(sceneW, scale);
+      lotuses.reconfigure(sceneW, scale);
+      treats = new Treats(scale);
+      ripples = new Ripples(scale);
     };
 
     // Scene-space spot a poke just disturbed; fish flee it while t > 0.
@@ -426,7 +416,7 @@ export default function FishBackground() {
       prevMouse.y = mouse.y;
       // Lift cursor from client into scene space so fish dodge it when scrolled.
       let mouseScene: Vec2 | null = null;
-      if (mv > MOUSE_FAST_PXS * screenScale) {
+      if (mv > MOUSE_FAST_PXS * scale) {
         mouseSceneObj.x = mouse.x;
         mouseSceneObj.y = mouse.y + worldY;
         mouseScene = mouseSceneObj;
@@ -511,7 +501,7 @@ export default function FishBackground() {
           palette,
           worldY,
           now / 1000,
-          screenScale,
+          scale,
         );
       }
 
@@ -550,7 +540,7 @@ export default function FishBackground() {
       ripples.emitRipples(water, worldY);
       treats.emitRipples(water, worldY);
       glPerf.pass("water");
-      water.composite(width, height, now / 1000, shadow.tex, screenScale);
+      water.composite(width, height, now / 1000, shadow.tex, scale);
       // Upscale the scaled composite to the full-res default framebuffer;
       // lilypads/lotuses then draw crisp on top at native resolution.
       glPerf.pass("present");

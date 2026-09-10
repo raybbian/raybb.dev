@@ -1,7 +1,7 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { FISH_HALF_W, FISH_STEP } from "./fishMesh";
 import { PALETTE as P } from "@/figures/palette";
-import { figureFont, figurePx } from "@/figures/scale";
+import { figureFont } from "@/figures/units";
 
 // The site's real fish mesh seen as circles on a spine: each circle's radius
 // is the koi body half-width at that joint, and the contour joins the
@@ -19,7 +19,6 @@ class CirclesSketch implements Sketch {
   private ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
-  private screenScale = 1;
   // Per-joint radius multipliers on the real half-widths (1 = true mesh).
   private mult = FISH_HALF_W.map(() => 1);
   private dragging = -1;
@@ -33,10 +32,9 @@ class CirclesSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number, _dpr: number, screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
-    this.screenScale = screenScale;
   }
 
   // Uniform scale that fits the mesh into the area, aspect preserved (so it
@@ -69,7 +67,7 @@ class CirclesSketch implements Sketch {
       this.dragging = -1;
       for (let i = 0; i < N; i++) {
         const d = Math.hypot(p.x - pts[i].x, p.y - pts[i].y);
-        if (d < pts[i].r + 14) {
+        if (d < pts[i].r + 31.5) {
           this.dragging = i;
           this.grabDist = d;
           this.grabMult = this.mult[i];
@@ -82,7 +80,7 @@ class CirclesSketch implements Sketch {
 
     this.hover = -1;
     for (let i = 0; i < N; i++) {
-      if (Math.hypot(p.x - pts[i].x, p.y - pts[i].y) < pts[i].r + 14) {
+      if (Math.hypot(p.x - pts[i].x, p.y - pts[i].y) < pts[i].r + 31.5) {
         this.hover = i;
         break;
       }
@@ -102,7 +100,7 @@ class CirclesSketch implements Sketch {
 
   frame(t: number) {
     const ctx = this.ctx;
-    const { w, h, screenScale: s } = this;
+    const { w, h } = this;
     ctx.clearRect(0, 0, w, h);
     if (w === 0) return;
     ctx.fillStyle = P.bg;
@@ -113,7 +111,7 @@ class CirclesSketch implements Sketch {
 
     // Spine.
     ctx.strokeStyle = P.spine;
-    ctx.lineWidth = figurePx(s, 2);
+    ctx.lineWidth = 4.5;
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (const p of pts) ctx.lineTo(p.x, p.y);
@@ -123,7 +121,7 @@ class CirclesSketch implements Sketch {
     const first = pts[0];
     const lastP = pts[N - 1];
     ctx.strokeStyle = P.accent;
-    ctx.lineWidth = figurePx(s, 2.75);
+    ctx.lineWidth = 6.19;
     ctx.beginPath();
     ctx.moveTo(first.x - first.r * breathe, first.y);
     for (let i = 0; i < N; i++)
@@ -135,7 +133,7 @@ class CirclesSketch implements Sketch {
     ctx.stroke();
 
     // Circles.
-    ctx.lineWidth = figurePx(s, 1.75);
+    ctx.lineWidth = 3.94;
     pts.forEach((p, i) => {
       ctx.strokeStyle =
         i === this.hover || i === this.dragging ? P.accent : P.structural;
@@ -148,13 +146,13 @@ class CirclesSketch implements Sketch {
     ctx.fillStyle = P.point;
     for (const p of pts) {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, figurePx(s, 3.25), 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 7.31, 0, Math.PI * 2);
       ctx.fill();
     }
 
     ctx.fillStyle = P.hint;
-    ctx.font = figureFont(s);
-    ctx.fillText("drag a circle to resize it", figurePx(s, 14), h - figurePx(s, 14));
+    ctx.font = figureFont();
+    ctx.fillText("drag a circle to resize it", 31.5, h - 31.5);
   }
 
   dispose() {}

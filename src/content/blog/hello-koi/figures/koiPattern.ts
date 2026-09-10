@@ -1,4 +1,4 @@
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import { DEFAULT_KOI_COLORS, pickKoiColors } from "@/sim/koiPattern";
 import { mulberry32 } from "@/lib/math";
 import { FullscreenShader } from "@/figures/FullscreenShader";
@@ -61,7 +61,7 @@ class KoiPatternSketch implements Sketch {
 
   // Fullscreen shader: the koi-pattern shader is dimensionless, sampled across
   // the panel via UV; no scene-px literals to scale.
-  resize(w: number, h: number, _dpr: number, _screenScale: number) {
+  resize({ w, h }: FigureView) {
     if (h > 0) this.uRange = (PAT_V_RANGE * (w / h)) / SHADER_ASPECT;
   }
 

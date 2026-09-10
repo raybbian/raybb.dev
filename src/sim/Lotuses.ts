@@ -96,7 +96,7 @@ function placeBandLotuses(
   width: number,
   bandTop: number,
   bandH: number,
-  screenScale: number,
+  worldScale: number,
 ): Lotus[] {
   const lotuses: Lotus[] = [];
   const lerp = (lo: number, hi: number) => lo + rng() * (hi - lo);
@@ -107,7 +107,7 @@ function placeBandLotuses(
       const edge = rng() < 0.5 ? -1 : 1;
       const hx = width * (PLACE_CENTER + edge * range(PLACE_X_OFFSET));
       const hy = bandTop + range(PLACE_Y) * bandH;
-      const size = range(SIZE) * screenScale;
+      const size = range(SIZE) * worldScale;
       const bobAmp = range(BOB_AMP);
       const ringCount = Math.round(range(RING_COUNT));
       // Footprint = outermost ring's petal tip; depends on ringCount.
@@ -116,7 +116,7 @@ function placeBandLotuses(
       const clear = lotuses.every((q) => {
         const dx = q.hx - hx;
         const dy = q.hy - hy;
-        return Math.hypot(dx, dy) >= reach + q.reach + LOTUS_GAP * screenScale;
+        return Math.hypot(dx, dy) >= reach + q.reach + LOTUS_GAP * worldScale;
       });
       if (!clear) continue;
 
@@ -265,14 +265,14 @@ export class Lotuses {
   constructor(
     private seed: number,
     private width: number,
-    private screenScale: number,
+    private worldScale: number,
   ) {}
 
   // Viewport width/scale truly changed: drop the cache so bands regenerate at
   // the new metrics (deterministic — the same metrics reproduce the field).
-  reconfigure(width: number, screenScale: number): void {
+  reconfigure(width: number, worldScale: number): void {
     this.width = width;
-    this.screenScale = screenScale;
+    this.worldScale = worldScale;
     this.bands.clear();
   }
 
@@ -298,7 +298,7 @@ export class Lotuses {
           this.width,
           b * BAND_H,
           BAND_H,
-          this.screenScale,
+          this.worldScale,
         ),
         lastSeen: this.frame,
       });

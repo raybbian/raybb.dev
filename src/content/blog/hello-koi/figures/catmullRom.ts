@@ -1,5 +1,5 @@
 import { catmullRomClosed, type Vec2 } from "@/lib/math";
-import type { FigureModule, PointerInfo, Sketch } from "@/figures/types";
+import type { FigureModule, FigureView, PointerInfo, Sketch } from "@/figures/types";
 import {
   CURVE_SEGMENTS,
   anglesFromJoints,
@@ -9,7 +9,6 @@ import {
 } from "./fishMesh";
 import { PALETTE as P } from "@/figures/palette";
 import { drawVerticalDivider } from "@/figures/canvas2d";
-import { figurePx } from "@/figures/scale";
 
 type Pt = { x: number; y: number };
 
@@ -61,7 +60,6 @@ class CatmullSketch implements Sketch {
   private ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
-  private screenScale = 1;
   private left = LEFT0.map((p) => ({ ...p }));
   private drag = -1;
   private rightRing: Vec2[] = [];
@@ -73,10 +71,9 @@ class CatmullSketch implements Sketch {
 
   setTheme() {}
 
-  resize(w: number, h: number, _dpr: number, screenScale: number) {
+  resize({ w, h }: FigureView) {
     this.w = w;
     this.h = h;
-    this.screenScale = screenScale;
     if (w === 0 || h === 0) return;
     // Straight-spine body lives in the right half. Built once at resize-time
     // and fit into the panel; no per-frame work.
@@ -107,7 +104,7 @@ class CatmullSketch implements Sketch {
       this.drag = -1;
       this.left.forEach((cp, i) => {
         const m = this.map(cp, r);
-        if (Math.hypot(p.x - m.x, p.y - m.y) < 16) this.drag = i;
+        if (Math.hypot(p.x - m.x, p.y - m.y) < 36) this.drag = i;
       });
     } else if (p.type === "up") {
       this.drag = -1;
@@ -130,7 +127,7 @@ class CatmullSketch implements Sketch {
 
   frame() {
     const ctx = this.ctx;
-    const { w, h, screenScale: s } = this;
+    const { w, h } = this;
     ctx.clearRect(0, 0, w, h);
     if (w === 0) return;
     ctx.fillStyle = P.bg;
@@ -139,36 +136,36 @@ class CatmullSketch implements Sketch {
     drawVerticalDivider(ctx, w / 2, h, P.divider);
 
     // ---- Left: open spline through draggable points ----
-    // The dragged-point dots (`arc(_, _, 5, ...)`) are UI grabbers — kept at a
-    // constant 5px so the touch target stays usable at every viewport. The
-    // structural polyline and the smoothed accent curve are scene strokes.
+    // The dragged-point dots are drag grabbers. Like everything else they are
+    // sized in world units, so they scale with the figure. The structural
+    // polyline and the smoothed accent curve are scene strokes.
     const lr = this.leftRect();
     const lpts = this.left.map((p) => this.map(p, lr));
     ctx.strokeStyle = P.structural;
-    ctx.lineWidth = figurePx(s, 1.5);
+    ctx.lineWidth = 3.38;
     this.stroke(lpts, false);
     ctx.strokeStyle = P.accent;
-    ctx.lineWidth = figurePx(s, 3.25);
+    ctx.lineWidth = 7.31;
     this.stroke(catmullOpen(lpts, 24), false);
     lpts.forEach((m, i) => {
       ctx.fillStyle = i === this.drag ? P.accent : P.point;
       ctx.beginPath();
-      ctx.arc(m.x, m.y, 5, 0, Math.PI * 2);
+      ctx.arc(m.x, m.y, 11.25, 0, Math.PI * 2);
       ctx.fill();
     });
 
     // ---- Right: the real fish mesh, posed and still ----
     ctx.strokeStyle = P.structural;
-    ctx.lineWidth = figurePx(s, 1.5);
+    ctx.lineWidth = 3.38;
     this.stroke(this.rightRing, true);
     this.rightRing.forEach((m) => {
       ctx.fillStyle = P.structural;
       ctx.beginPath();
-      ctx.arc(m.x, m.y, figurePx(s, 3.25), 0, Math.PI * 2);
+      ctx.arc(m.x, m.y, 7.31, 0, Math.PI * 2);
       ctx.fill();
     });
     ctx.strokeStyle = P.accent;
-    ctx.lineWidth = figurePx(s, 3.25);
+    ctx.lineWidth = 7.31;
     this.stroke(this.rightSmooth, true);
   }
 
